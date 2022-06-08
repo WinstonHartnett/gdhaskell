@@ -1,6 +1,6 @@
 packages:
-  classgen
-  gdhaskell
+  gd-haskell
+  gd-haskell-gen
 
 allow-newer: process:filepath, directory:filepath
 
