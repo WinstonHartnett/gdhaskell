@@ -1,0 +1,3 @@
+[submodule "gd-haskell/godot-headers"]
+	path = gd-haskell/godot-headers
+	url = https://github.com/godotengine/godot-headers.git
