@@ -1,6 +1,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Godot.Extension.Extension where
 
@@ -13,6 +14,12 @@ import Foreign.Ptr
 
 instance From CInt Int where
   from = fromIntegral
+
+-- | Enums aren't marshallable via foreign imports, so this is a placeholder.
+newtype CEnum e = MkCEnum CInt
+
+instance Enum e => From (CEnum e) e where
+  from (MkCEnum i) = toEnum $ from i
 
 -- Variant Types
 {#enum GDNativeVariantType as GdnativeVariantType {underscoreToCase}
@@ -200,7 +207,7 @@ foreign import ccall "dynamic" mkGdnativeExtensionClassGet
   :: FunPtr GdnativeExtensionClassGet
   -> GdnativeExtensionClassGet
 
-data GdnativePropertyInfo = PropertyInfo
+data GdnativePropertyInfo = GdnativePropertyInfo
   { type' :: CUInt
   , name  :: CString
   , className :: CString
@@ -209,50 +216,62 @@ data GdnativePropertyInfo = PropertyInfo
   , usage :: CUInt
   }
 
+instance Storable GdnativePropertyInfo where
+  sizeOf _ = {#sizeof GDNativePropertyInfo #}
+  alignment _ = {#alignof GDNativePropertyInfo #}
+  peek ptr =
+    GdnativePropertyInfo
+      <$> {#get GDNativePropertyInfo->type #} ptr
+      <*> {#get GDNativePropertyInfo->name #} ptr
+      <*> {#get GDNativePropertyInfo->class_name #} ptr
+      <*> {#get GDNativePropertyInfo->hint #} ptr
+      <*> {#get GDNativePropertyInfo->hint_string #} ptr
+      <*> {#get GDNativePropertyInfo->usage #} ptr
+
 {#pointer *GDNativePropertyInfo as GdnativePropertyInfoPtr -> GdnativePropertyInfo #}
 
 type GdnativeExtensionClassGetPropertyList = FunPtr (GdextensionClassInstancePtr -> Ptr CUInt -> IO GdnativePropertyInfoPtr)
-foreign import ccall "dynamic" mkExtensionClassGetPropertyList
+foreign import ccall "dynamic" mkGdnativeExtensionClassGetPropertyList
   :: FunPtr GdnativeExtensionClassGetPropertyList
   -> GdnativeExtensionClassGetPropertyList
 type GdnativeExtensionClassFreePropertyList = GdextensionClassInstancePtr -> GdnativePropertyInfoPtr -> IO ()
-foreign import ccall "dynamic" mkExtensionClassFreePropertyList
+foreign import ccall "dynamic" mkGdnativeExtensionClassFreePropertyList
   :: FunPtr GdnativeExtensionClassFreePropertyList
   -> GdnativeExtensionClassFreePropertyList
 type GdnativeExtensionClassNotification = GdextensionClassInstancePtr -> CInt -> IO ()
-foreign import ccall "dynamic" mkExtensionClassNotification
+foreign import ccall "dynamic" mkGdnativeExtensionClassNotification
   :: FunPtr GdnativeExtensionClassNotification
   -> GdnativeExtensionClassNotification
 type GdnativeExtensionClassToString = GdextensionClassInstancePtr -> IO CString
-foreign import ccall "dynamic" mkExtensionClassClassToString
+foreign import ccall "dynamic" mkGdnativeExtensionClassClassToString
   :: FunPtr GdnativeExtensionClassToString
   -> GdnativeExtensionClassToString
 type GdnativeExtensionClassReference = GdextensionClassInstancePtr -> IO ()
-foreign import ccall "dynamic" mkExtensionClassClassReference
+foreign import ccall "dynamic" mkGdnativeExtensionClassClassReference
   :: FunPtr GdnativeExtensionClassReference
   -> GdnativeExtensionClassReference
 type GdnativeExtensionClassUnreference = GdextensionClassInstancePtr -> IO ()
-foreign import ccall "dynamic" mkExtensionClassClassUnreference
+foreign import ccall "dynamic" mkGdnativeExtensionClassClassUnreference
   :: FunPtr GdnativeExtensionClassUnreference
   -> GdnativeExtensionClassUnreference
 type GdnativeExtensionClassCallVirtual = GdextensionClassInstancePtr -> Ptr GdnativeTypePtr -> GdnativeTypePtr -> IO ()
-foreign import ccall "dynamic" mkExtensionClassCallVirtual
+foreign import ccall "dynamic" mkGdnativeExtensionClassCallVirtual
   :: FunPtr GdnativeExtensionClassCallVirtual
   -> GdnativeExtensionClassCallVirtual
 type GdnativeExtensionClassCreateInstance = Ptr () -> IO GdnativeObjectPtr
-foreign import ccall "dynamic" mkExtensionClassCreateInstance
+foreign import ccall "dynamic" mkGdnativeExtensionClassCreateInstance
   :: FunPtr GdnativeExtensionClassCreateInstance
   -> GdnativeExtensionClassCreateInstance
 type GdnativeExtensionClassFreeInstance = Ptr () -> GdextensionClassInstancePtr -> IO ()
-foreign import ccall "dynamic" mkExtensionClassFreeInstance
+foreign import ccall "dynamic" mkGdnativeExtensionClassFreeInstance
   :: FunPtr GdnativeExtensionClassFreeInstance
   -> GdnativeExtensionClassFreeInstance
 type GdnativeExtensionClassObjectInstance = GdextensionClassInstancePtr -> GdnativeObjectPtr -> IO ()
-foreign import ccall "dynamic" mkExtensionClassObjectInstance
+foreign import ccall "dynamic" mkGdnativeExtensionClassObjectInstance
   :: FunPtr GdnativeExtensionClassObjectInstance
   -> GdnativeExtensionClassObjectInstance
 type GdnativeExtensionClassGetVirtual = Ptr () -> CString -> IO (FunPtr GdnativeExtensionClassCallVirtual)
-foreign import ccall "dynamic" mkExtensionClassGetVirtual
+foreign import ccall "dynamic" mkGdnativeExtensionClassGetVirtual
   :: FunPtr GdnativeExtensionClassGetVirtual
   -> GdnativeExtensionClassGetVirtual
 
@@ -280,35 +299,90 @@ type GdnativeExtensionClassLibraryPtr = {#type GDNativeExtensionClassLibraryPtr 
 {#enum GDNativeExtensionClassMethodArgumentMetadata as GdnativeExtensionClassMethodArgumentMetadata {underscoreToCase}
   deriving (Show, Eq, Ord, Bounded) #}
 
-type GdnativeExtensionClassMethodCall = Ptr () -> GdextensionClassInstancePtr -> GdnativeVariantPtr -> GdnativeInt -> GdnativeVariantPtr -> GdnativeCallError -> IO ()
+type GdnativeExtensionClassMethodCall = Ptr () -> GdextensionClassInstancePtr -> GdnativeVariantPtr -> GdnativeInt -> GdnativeVariantPtr -> Ptr GdnativeCallError -> IO ()
+foreign import ccall "dynamic" mkGdnativeExtensionClassMethodCall
+  :: FunPtr GdnativeExtensionClassMethodCall
+  -> GdnativeExtensionClassMethodCall
+type GdnativeExtensionClassMethodPtrCall = Ptr () -> GdextensionClassInstancePtr -> GdnativeTypePtr -> GdnativeTypePtr -> IO ()
+foreign import ccall "dynamic" mkGdnativeExtensionClassMethodPtrCall
+  :: FunPtr GdnativeExtensionClassMethodPtrCall
+  -> GdnativeExtensionClassMethodPtrCall
 
--- {#pointer GDNativeVariantFromTypeConstructorFunc as GdnativeVariantFromTypeConstructorFunc newtype #}
--- deriving newtype instance Show GdnativeVariantFromTypeConstructorFunc
--- {#pointer GDNativeTypeFromVariantConstructorFunc as GdnativeTypeFromVariantConstructorFunc newtype #}
--- deriving newtype instance Show GdnativeTypeFromVariantConstructorFunc
--- {#pointer GDNativePtrOperatorEvaluator as GdnativePtrOperatorEvaluator newtype #}
--- deriving newtype instance Show GdnativePtrOperatorEvaluator
--- {#pointer GDNativePtrBuiltInMethod as GdnativePtrBuiltInMethod newtype #}
--- deriving newtype instance Show GdnativePtrBuiltInMethod
--- {#pointer GDNativePtrConstructor as GdnativePtrConstructor newtype #}
--- deriving newtype instance Show GdnativePtrConstructor
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
--- {#pointer GDNativeV as GdnativeV newtype #}
--- deriving newtype instance Show GdnativeV
+type GdnativeExtensionClassMethodGetArgumentType = Ptr () -> CUInt -> IO (CEnum GdnativeVariantType)
+foreign import ccall "dynamic" mkGdnativeExtensionClassMethodGetArgumentType
+  :: FunPtr GdnativeExtensionClassMethodGetArgumentType
+  -> GdnativeExtensionClassMethodGetArgumentType
+type GdnativeExtensionClassMethodGetArgumentInfo = Ptr () -> CInt -> GdnativePropertyInfoPtr -> IO ()
+foreign import ccall "dynamic" mkGdnativeExtensionClassMethodGetArgumentInfo
+  :: FunPtr GdnativeExtensionClassMethodGetArgumentInfo
+  -> GdnativeExtensionClassMethodGetArgumentInfo
+type GdnativeExtensionClassMethodGetArgumentMetadata = Ptr () -> CInt -> IO (CEnum GdnativeExtensionClassMethodArgumentMetadata)
+foreign import ccall "dynamic" mkGdnativeExtensionClassMethodGetArgumentMetadata
+  :: FunPtr GdnativeExtensionClassMethodGetArgumentMetadata
+  -> GdnativeExtensionClassMethodGetArgumentMetadata
+
+data GdnativeExtensionClassMethodInfo = GdnativeExtensionClassMethodInfo
+  { name :: CString
+  , methodUserdata :: Ptr ()
+  , callFunc :: GdnativeExtensionClassMethodCall
+  , ptrcallFunc :: GdnativeExtensionClassMethodPtrCall
+  , methodFlags :: CUInt
+  , argumentCountr :: CUInt
+  , hasReturnValue :: GdnativeBool
+  , getArgumentTypeFunc :: GdnativeExtensionClassMethodGetArgumentType
+  , getArgumentInfoFunc :: GdnativeExtensionClassMethodGetArgumentInfo
+  , getArgumentMetadataFunc :: GdnativeExtensionClassMethodGetArgumentMetadata
+  , defaultArgumentCount :: CUInt
+  , defaultArguments :: Ptr GdnativeVariantPtr
+  }
+
+data GdnativeInterface = GdnativeInterface
+  { versionMajor  :: CUInt
+  , versionMinor  :: CUInt
+  , versionPatch  :: CUInt
+  , versionString :: CString
+
+  , memAlloc   :: FunPtr (CSize -> IO (Ptr ()))
+  , memRealloc :: FunPtr (Ptr () -> CSize -> IO (Ptr ()))
+  , memFree    :: FunPtr (Ptr () -> IO ())
+
+  , printError       :: FunPtr (CString -> CString -> CString -> CInt -> IO ())
+  , printWarning     :: FunPtr (CString -> CString -> CString -> CInt -> IO ())
+  , printScriptError :: FunPtr (CString -> CString -> CString -> CInt -> IO ())
+  
+  , variantNewCopy :: FunPtr (GdnativeVariantPtr -> GdnativeVariantPtr -> IO ())
+  , variantNewNil  :: FunPtr (GdnativeVariantPtr -> IO ())
+  , variantDestroy :: FunPtr (GdnativeVariantPtr -> IO ())
+  
+  , variantCall       :: FunPtr (GdnativeVariantPtr -> GdnativeStringNamePtr -> Ptr GdnativeVariantPtr -> GdnativeInt -> GdnativeVariantPtr -> Ptr GdnativeCallError -> IO ())
+  , variantCallStatic :: FunPtr (GdnativeVariantPtr -> GdnativeStringNamePtr -> Ptr GdnativeVariantPtr -> GdnativeInt -> GdnativeVariantPtr -> Ptr GdnativeCallError -> IO ())
+  , variantEvaluate   :: FunPtr (GdnativeVariantOperator -> GdnativeVariantPtr -> GdnativeVariantPtr -> GdnativeVariantPtr -> Ptr GdnativeBool -> IO ())
+  , variantSet        :: FunPtr (GdnativeVariantPtr -> GdnativeVariantPtr -> GdnativeVariantPtr -> Ptr GdnativeBool -> IO ())
+  , variantSetNamed   :: FunPtr (GdnativeVariantPtr -> GdnativeStringNamePtr -> GdnativeVariantPtr -> Ptr GdnativeBool -> IO ())
+  , variantSetKeyed   :: FunPtr (GdnativeVariantPtr -> GdnativeVariantPtr -> GdnativeVariantPtr -> Ptr GdnativeBool -> IO ())
+  , variantSetIndexed :: FunPtr (GdnativeVariantPtr -> GdnativeInt -> GdnativeVariantPtr -> Ptr GdnativeBool -> Ptr GdnativeBool -> IO ())
+  }
+
+
+
+
+
+
+
+
+
+
+{#enum GDNativeInitializationLevel as GdnativeInitializationLevel {underscoreToCase}
+  deriving (Show, Eq, Ord, Bounded) #}
+
+data GdnativeInitialization = GdnativeInitialization
+  { minimumInitializationLevel :: GdnativeInitializationLevel
+  , userdata :: Ptr ()
+  , initialize :: FunPtr (Ptr () -> GdnativeInitializationLevel -> IO ())
+  , deinitialize :: FunPtr (Ptr () -> GdnativeInitializationLevel -> IO ())
+  }
+
+type GdnativeInitializationFunction = Ptr GdnativeInterface -> GdnativeExtensionClassLibraryPtr -> CEnum GdnativeInitialization -> IO ()
+foreign import ccall "dynamic" mkGdnativeInitializationFunction
+  :: FunPtr GdnativeInitializationFunction
+  -> GdnativeInitializationFunction
