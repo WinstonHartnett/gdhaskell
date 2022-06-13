@@ -21,8 +21,15 @@ instance From CInt Int where
 instance From Int CInt where
   from = fromIntegral
 
+instance From Int CUChar where
+  from = fromIntegral
+
+instance From CUChar Int where
+  from = fromIntegral
+
 -- | Enums aren't marshallable via foreign imports, so this is a placeholder.
 newtype CEnum e = MkCEnum CInt
+  deriving Show
 
 instance Enum e => From (CEnum e) e where
   from (MkCEnum i) = toEnum $ from i
@@ -251,7 +258,7 @@ type GdnativeExtensionClassNotification = GdextensionClassInstancePtr -> CInt ->
 foreign import ccall "dynamic" mkGdnativeExtensionClassNotification
   :: FunPtr GdnativeExtensionClassNotification
   -> GdnativeExtensionClassNotification
-type GdnativeExtensionClassToString = GdextensionClassInstancePtr -> IO CString
+type GdnativeExtensionClassToString = GdextensionClassInstancePtr -> GdnativeStringPtr -> IO ()
 foreign import ccall "dynamic" mkGdnativeExtensionClassToString
   :: FunPtr GdnativeExtensionClassToString
   -> GdnativeExtensionClassToString
@@ -1085,8 +1092,4 @@ type GdnativeInitializationFunction = Ptr GdnativeInterface -> GdnativeExtension
 foreign import ccall "dynamic" mkGdnativeInitializationFunction
   :: FunPtr GdnativeInitializationFunction
   -> GdnativeInitializationFunction
-
---------------------------------------------------------------------------------
--- Utilities
---------------------------------------------------------------------------------
 

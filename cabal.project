@@ -1,12 +1,7 @@
 packages:
   gd-haskell
+  gd-extension-gen
   gd-haskell-gen
-
-allow-newer: process:filepath, directory:filepath
-
-source-repository-package
-  type: git
-  location: https://github.com/haskell/filepath.git
 
 source-repository-package
   type: git

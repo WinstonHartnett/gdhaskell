@@ -1,0 +1,375 @@
+Build profile: -w ghc-9.2.2 -O1
+In order, the following will be built (use -v for more details):
+ - gd-extension-gen-0.1.0.0 (exe:gd-extension-gen) (file app/Main.hs changed)
+Preprocessing executable 'gd-extension-gen' for gd-extension-gen-0.1.0.0..
+Building executable 'gd-extension-gen' for gd-extension-gen-0.1.0.0..
+[1 of 1] Compiling Main             ( app/Main.hs, /stg/Code/Haskell/gdhaskell/dist-newstyle/build/x86_64-linux/ghc-9.2.2/gd-extension-gen-0.1.0.0/x/gd-extension-gen/build/gd-extension-gen/gd-extension-gen-tmp/Main.o, /stg/Code/Haskell/gdhaskell/dist-newstyle/build/x86_64-linux/ghc-9.2.2/gd-extension-gen-0.1.0.0/x/gd-extension-gen/build/gd-extension-gen/gd-extension-gen-tmp/Main.dyn_o )
+Linking /stg/Code/Haskell/gdhaskell/dist-newstyle/build/x86_64-linux/ghc-9.2.2/gd-extension-gen-0.1.0.0/x/gd-extension-gen/build/gd-extension-gen/gd-extension-gen ...
+CDecl
+    [ CStorageSpec
+        ( CTypedef
+            ( NodeInfo
+                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                (
+                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                , 7
+                )
+                ( Name
+                    { nameId = 7079 }
+                )
+            )
+        )
+    , CTypeSpec
+        ( CTypeDef
+            ( Ident "GDNativeBool" 378359549
+                ( NodeInfo
+                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                    (
+                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                    , 12
+                    )
+                    ( Name
+                        { nameId = 7078 }
+                    )
+                )
+            )
+            ( NodeInfo
+                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                (
+                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                , 12
+                )
+                ( Name
+                    { nameId = 7080 }
+                )
+            )
+        )
+    ]
+    [
+        ( Just
+            ( CDeclr
+                ( Just
+                    ( Ident "GDNativeInitializationFunction" 234049843
+                        ( NodeInfo
+                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                            (
+                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                            , 30
+                            )
+                            ( Name
+                                { nameId = 7081 }
+                            )
+                        )
+                    )
+                )
+                [ CPtrDeclr []
+                    ( NodeInfo
+                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                        (
+                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                        , 30
+                        )
+                        ( Name
+                            { nameId = 7083 }
+                        )
+                    )
+                , CFunDeclr
+                    ( Right
+                        (
+                            [ CDecl
+                                [ CTypeQual
+                                    ( CConstQual
+                                        ( NodeInfo
+                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            (
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            , 5
+                                            )
+                                            ( Name
+                                                { nameId = 7085 }
+                                            )
+                                        )
+                                    )
+                                , CTypeSpec
+                                    ( CTypeDef
+                                        ( Ident "GDNativeInterface" 304546395
+                                            ( NodeInfo
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                (
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                , 17
+                                                )
+                                                ( Name
+                                                    { nameId = 7084 }
+                                                )
+                                            )
+                                        )
+                                        ( NodeInfo
+                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            (
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            , 17
+                                            )
+                                            ( Name
+                                                { nameId = 7086 }
+                                            )
+                                        )
+                                    )
+                                ]
+                                [
+                                    ( Just
+                                        ( CDeclr
+                                            ( Just
+                                                ( Ident "p_interface" 449877189
+                                                    ( NodeInfo
+                                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                        (
+                                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                        , 11
+                                                        )
+                                                        ( Name
+                                                            { nameId = 7087 }
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                            [ CPtrDeclr []
+                                                ( NodeInfo
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                    (
+                                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                    , 11
+                                                    )
+                                                    ( Name
+                                                        { nameId = 7089 }
+                                                    )
+                                                )
+                                            ] Nothing []
+                                            ( NodeInfo
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                (
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                , 11
+                                                )
+                                                ( Name
+                                                    { nameId = 7088 }
+                                                )
+                                            )
+                                        )
+                                    , Nothing
+                                    , Nothing
+                                    )
+                                ]
+                                ( NodeInfo
+                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                    (
+                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                    , 11
+                                    )
+                                    ( Name
+                                        { nameId = 7090 }
+                                    )
+                                )
+                            , CDecl
+                                [ CTypeQual
+                                    ( CConstQual
+                                        ( NodeInfo
+                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            (
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            , 5
+                                            )
+                                            ( Name
+                                                { nameId = 7092 }
+                                            )
+                                        )
+                                    )
+                                , CTypeSpec
+                                    ( CTypeDef
+                                        ( Ident "GDNativeExtensionClassLibraryPtr" 432868138
+                                            ( NodeInfo
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                (
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                , 32
+                                                )
+                                                ( Name
+                                                    { nameId = 7091 }
+                                                )
+                                            )
+                                        )
+                                        ( NodeInfo
+                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            (
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            , 32
+                                            )
+                                            ( Name
+                                                { nameId = 7094 }
+                                            )
+                                        )
+                                    )
+                                ]
+                                [
+                                    ( Just
+                                        ( CDeclr
+                                            ( Just
+                                                ( Ident "p_library" 462662091
+                                                    ( NodeInfo
+                                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                        (
+                                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                        , 9
+                                                        )
+                                                        ( Name
+                                                            { nameId = 7093 }
+                                                        )
+                                                    )
+                                                )
+                                            ) [] Nothing []
+                                            ( NodeInfo
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                (
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                , 9
+                                                )
+                                                ( Name
+                                                    { nameId = 7095 }
+                                                )
+                                            )
+                                        )
+                                    , Nothing
+                                    , Nothing
+                                    )
+                                ]
+                                ( NodeInfo
+                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                    (
+                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                    , 9
+                                    )
+                                    ( Name
+                                        { nameId = 7096 }
+                                    )
+                                )
+                            , CDecl
+                                [ CTypeSpec
+                                    ( CTypeDef
+                                        ( Ident "GDNativeInitialization" 302278614
+                                            ( NodeInfo
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                (
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                , 22
+                                                )
+                                                ( Name
+                                                    { nameId = 7097 }
+                                                )
+                                            )
+                                        )
+                                        ( NodeInfo
+                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            (
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                            , 22
+                                            )
+                                            ( Name
+                                                { nameId = 7098 }
+                                            )
+                                        )
+                                    )
+                                ]
+                                [
+                                    ( Just
+                                        ( CDeclr
+                                            ( Just
+                                                ( Ident "r_initialization" 338662459
+                                                    ( NodeInfo
+                                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                        (
+                                                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                        , 16
+                                                        )
+                                                        ( Name
+                                                            { nameId = 7099 }
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                            [ CPtrDeclr []
+                                                ( NodeInfo
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                    (
+                                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                    , 16
+                                                    )
+                                                    ( Name
+                                                        { nameId = 7101 }
+                                                    )
+                                                )
+                                            ] Nothing []
+                                            ( NodeInfo
+                                                ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                (
+                                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                                , 16
+                                                )
+                                                ( Name
+                                                    { nameId = 7100 }
+                                                )
+                                            )
+                                        )
+                                    , Nothing
+                                    , Nothing
+                                    )
+                                ]
+                                ( NodeInfo
+                                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                    (
+                                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                                    , 16
+                                    )
+                                    ( Name
+                                        { nameId = 7102 }
+                                    )
+                                )
+                            ]
+                        , False
+                        )
+                    ) []
+                    ( NodeInfo
+                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                        (
+                            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                        , 1
+                        )
+                        ( Name
+                            { nameId = 7103 }
+                        )
+                    )
+                ] Nothing []
+                ( NodeInfo
+                    ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                    (
+                        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+                    , 30
+                    )
+                    ( Name
+                        { nameId = 7082 }
+                    )
+                )
+            )
+        , Nothing
+        , Nothing
+        )
+    ]
+    ( NodeInfo
+        ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+        (
+            ( "gd-haskell/godot-headers/godot/gdnative_interface.h": line 579 )
+        , 1
+        )
+        ( Name
+            { nameId = 7104 }
+        )
+    )
