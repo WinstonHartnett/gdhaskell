@@ -3,7 +3,7 @@ name:               gd-extension-gen
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
--- synopsis:
+synopsis:           Generate GDExtension bindings.
 
 -- A longer description of the package.
 -- description:
@@ -21,26 +21,41 @@ maintainer:         winstonhartnett@gmail.com
 -- category:
 extra-source-files: CHANGELOG.md
 
+library
+  exposed-modules:
+    Godot.Extension.Generate.Api
+    Godot.Extension.Generate.Interface
+    Godot.Extension.Generate.Utils
+
+  build-depends:
+      aeson
+    , base                  ^>=4.16.1.0
+    , generic-lens
+    , hashable
+    , language-c
+    , lens
+    , mtl
+    , string-interpolate
+    , text
+    , unordered-containers
+    , vector
+
+  hs-source-dirs:   src
+  ghc-options:      -Wall
+  default-language: Haskell2010
+
 executable gd-extension-gen
-    main-is:          Main.hs
+  main-is:          Main.hs
 
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
+  -- Modules included in this executable, other than Main.
+  -- other-modules:
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:
-        base ^>=4.16.1.0
-      , language-c
-      , text
-      , text-builder-linear
-      , neat-interpolation
-      , unordered-containers
-      , lens
-      , generic-lens
-      , mtl
-      , hashable
+  -- LANGUAGE extensions used by modules in this package.
+  -- other-extensions:
+  build-depends:
+      base                  ^>=4.16.1.0
+    , gd-extension-gen
+    , text
 
-    hs-source-dirs:   app
-    ghc-options:      -Wall
-    default-language: Haskell2010
+  hs-source-dirs:   app
+  default-language: Haskell2010

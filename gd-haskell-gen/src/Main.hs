@@ -23,7 +23,12 @@ import GHC.OverloadedLabels (IsLabel)
 import Foreign
 
 
+data Object
 
+data Instance a = MkInstance
+  { base   :: Object
+  , script :: a
+  }
 
 
 
@@ -54,19 +59,22 @@ import Foreign
 -- 
 -- ready :: Godot Player ()
 -- ready = do
---   modify $ set #screenSize . view #y =<< getViewportRect =<< self
---   hide =<< self
+--   base' <- base
+--   change (set #screenSize . view #y) =<< getViewportRect base
+--   hide base
 -- 
 -- start :: Godot Player ()
 -- start = do
---   setPosition pos =<< self
---   show =<< self
---   self >>= getNode @"CollisionShape2D" >>= (`setDisabled` False)
+--   base' <- base
+--   setPosition pos base'
+--   show base'
+--   getNode @"CollisionShape2D" base' >>= (`setDisabled` False)
 --
 -- process :: Float -> Godot Player ()
 -- process delta = do
---   animSprite <- getNode @"AnimatedSprite3D" =<< self
---   screenSize <- self >>= getViewportRect
+--   base' <- base
+--   animSprite <- getNode @"AnimatedSprite3D" base
+--   screenSize <- getViewportRect base
 --   [left, right, up, down] <- do
 --     Just inp <- getSingleton @Input
 --     mapM (isActionPressed inp) ["ui_left", "ui_right", "ui_up", "ui_down"]
@@ -75,18 +83,18 @@ import Foreign
 --         in V2 ...
 --   if velocity /= zero
 --     then do
---       pos <- self >>= getPosition
+--       pos <- getPosition base
 --       let velocity' = normalize velocity 
 --  
 -- onPlayerBodyEntered :: Node -> Godot Player ()
 -- onPlayerBodyEntered body = do
---   hide =<< self
---   emitSignal @"hit" [] =<< self
---   self 
---     >>= getNode @"CollisionShape2D" 
+--   base' <- base
+--   hide base
+--   emitSignal @"hit" [] base
+--   getNode @"CollisionShape2D" base
 --     >>= callDefferred "set_disabled" [from True]
 --
--- {-# ANN Player (exports ['ready, 'start, 'process] <> exportsAs [('onPlayerBodyEntered, "on_Player_body_entered")]) #-}
+-- {-# ANN type Player (exports ['ready, 'start, 'process, 'onPlayerBodyEnetered]) #-}
 --
 -- godot ''Player
 
@@ -97,6 +105,7 @@ generateEnum = undefined
 
 main :: IO ()
 main = do
-  f <- BS.readFile "godot-headers/extension_api.json"
-  let res = A.eitherDecode @ExtensionApi f
-  print $ res
+  pure ()
+  -- f <- BS.readFile "godot-headers/extension_api.json"
+  -- let res = A.eitherDecode @ExtensionApi f
+  -- print $ res

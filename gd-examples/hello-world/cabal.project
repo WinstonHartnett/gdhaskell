@@ -1,3 +1,4 @@
 packages:
-  .
+  ../../gd-extension-gen
   ../../gd-haskell
+  .

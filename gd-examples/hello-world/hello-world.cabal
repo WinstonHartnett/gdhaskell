@@ -37,10 +37,19 @@ library
   exposed-modules:  MyLib
 
   -- Modules included in this library but not exported.
-  -- other-modules:
+  other-modules:    FLib
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
-  build-depends:    base ^>=4.16.1.0
-  hs-source-dirs:   src
+  build-depends:
+      base ^>=4.16.1.0
+    , witch
+    , gd-haskell
+    , gd-extension-gen
+    , witch
+    , vector
+    , text
+  hs-source-dirs:
+    src
+    ffi/flib
   default-language: Haskell2010
