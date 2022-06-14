@@ -21,29 +21,50 @@
 module Main where
 
 import Control.Applicative
-import Control.Lens hiding (uncons, (|>))
+import Control.Lens (
+  Field1 (_1),
+  Field3 (_3),
+  firstOf,
+  folded,
+  has,
+  over,
+  preview,
+  view,
+  (^.),
+  (^?),
+  _Just,
+  _Right,
+ )
 import Control.Monad
 import Control.Monad.State (State, get, modify, runState)
 import Data.Char (toUpper)
 import Data.Foldable
-import Data.Generics.Labels
+import Data.Generics.Labels ()
 import Data.Generics.Sum (AsConstructor (_Ctor))
 import qualified Data.HashMap.Strict as HM
-import Data.Hashable
+import Data.Hashable (Hashable)
 import Data.List (intersperse, uncons)
 import Data.Maybe (fromJust, fromMaybe, isJust, listToMaybe, mapMaybe)
 import qualified Data.Text as T
+import Data.Text.Builder.Linear.Buffer (foldlIntoBuffer, runBuffer, (|>))
 import qualified Data.Text.IO as T
-import GHC.Generics
+import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import Language.C (CNode, NodeInfo, fileOfNode, identToString, parseCFile)
 import Language.C.Data.Ident (Ident)
-import Language.C.Syntax.AST
+import Language.C.Syntax.AST (
+  CDeclaration (CDecl),
+  CDeclarator (..),
+  CDerivedDeclarator,
+  CEnumeration,
+  CExternalDeclaration (CDeclExt),
+  CStorageSpecifier,
+  CTranslationUnit (CTranslUnit),
+  CTypeSpecifier,
+ )
 import Language.C.System.GCC (newGCC)
 import NeatInterpolation (trimming)
-import Text.Pretty.Simple (pPrint)
 import Prelude hiding (head)
-import Debug.Trace (trace)
 
 fileHeader :: T.Text
 fileHeader =
@@ -55,7 +76,7 @@ fileHeader =
     {-# LANGUAGE StrictData #-}
     {-# LANGUAGE TypeApplications #-}
 
-    module Godot.Extension.Ext where
+    module Godot.Extension.Extension where
 
     import Witch
     import Foreign.C
@@ -91,6 +112,9 @@ toCamelCase t =
           i
           camelSubsitutions
    in foldl' (<>) "" $ map replaceCustom (first : splitRest)
+
+buildText :: [T.Text] -> T.Text
+buildText t = runBuffer \b -> foldlIntoBuffer (|>) b t
 
 --------------------------------------------------------------------------------
 
@@ -195,22 +219,32 @@ findSpecToCType spec = listToMaybe $ mapMaybe (\test -> test spec) typeSpecToCTy
 
 cItemToCamelCase :: CItem CType -> T.Text
 cItemToCamelCase (MkCItem nPtrs ty) =
-  foldl' (<>) mempty $ replicate nPtrs "Ptr (" <> [toCamelCase ty.unCType] <> replicate nPtrs ")"
+  buildText $ replicate nPtrs "Ptr (" <> [toCamelCase ty.unCType] <> replicate nPtrs ")"
 
 cItemTypeToHType :: CItem CType -> HType
 cItemTypeToHType (MkCItem nPtrs ty) =
-  MkHType $ foldl' (<>) mempty $ replicate nPtrs "Ptr (" <> [unHType $ fromMaybe (MkHType $ toCamelCase ty.unCType) $ HM.lookup ty cTypeToHType] <> replicate nPtrs ")"
+  MkHType
+    . buildText
+    $ replicate nPtrs "Ptr ("
+      <> [ unHType
+            . fromMaybe (MkHType $ toCamelCase ty.unCType)
+            $ HM.lookup ty cTypeToHType
+         ]
+      <> replicate nPtrs ")"
 
 --------------------------------------------------------------------------------
 
 typeSpecifiers :: CDeclaration a -> [CTypeSpecifier a]
 typeSpecifiers (CDecl specs _ _) = mapMaybe (^? _Ctor @"CTypeSpec") specs
+typeSpecifiers _ = undefined
 
 storageSpecifiers :: CDeclaration a -> [CStorageSpecifier a]
 storageSpecifiers (CDecl specs _ _) = mapMaybe (^? _Ctor @"CStorageSpec") specs
+storageSpecifiers _ = undefined
 
 declarators :: CDeclaration a -> [CDeclarator a]
 declarators (CDecl _ declrs _) = mapMaybe (view _1) declrs
+declarators _ = undefined
 
 derivedDeclrs :: CDeclarator a -> [CDerivedDeclarator a]
 derivedDeclrs (CDeclr _ d _ _ _) = d
@@ -274,9 +308,11 @@ declReturns decl =
 
 --------------------------------------------------------------------------------
 
+-- | Register a 'GdnativeItem' definition for use in future generation.
 registerItem :: CType -> GdnativeItem -> GD ()
 registerItem c i = modify (HM.insert c i)
 
+-- | Convert an enum 'CDeclaration' into an 'EnumDef'.
 processEnum :: CDeclaration NodeInfo -> EnumDef
 processEnum decl =
   MkEnumDef
@@ -286,12 +322,14 @@ processEnum decl =
     . mapMaybe (^? _Ctor @"CDeclr" . _1 . _Just)
     $ declarators decl
 
+-- | Convert a typedef 'CDeclaration' into an 'TypeDef'.
 processTypeDef :: CDeclaration NodeInfo -> TypeDef
 processTypeDef decl =
   MkTypeDef
     (MkCType (fromJust $ declName decl))
     (fromJust $ declReturns decl)
 
+-- | Convert a function pointer typedef 'CDeclaration' into an 'FunPtrDef'.
 processFunPtr :: CDeclaration NodeInfo -> FunPtrDef
 processFunPtr decl =
   let childDecls =
@@ -304,6 +342,7 @@ processFunPtr decl =
         (fromJust $ declReturns decl)
         (map (fromJust . declReturns) childDecls)
 
+-- | Convert a struct 'CDeclaration' into an 'StructDef'.
 processStruct :: CDeclaration NodeInfo -> StructDef
 processStruct decl =
   let fields =
@@ -329,6 +368,7 @@ processStruct decl =
     | isFunPtr decl = Right $ processFunPtr decl
     | otherwise = Left $ processField decl
 
+-- | Turn a 'CDeclaration' into a 'GdnativeItem'.
 processItem :: CDeclaration NodeInfo -> Maybe GdnativeItem
 processItem decl
   | isTypedef decl && isInGdnativeFile decl =
@@ -342,24 +382,28 @@ processItem decl
 
 --------------------------------------------------------------------------------
 
+-- | Generate a c2hs enum shim.
 genEnum :: EnumDef -> GD T.Text
-genEnum e@(MkEnumDef name) =
+genEnum e@(MkEnumDef name) = do
   let hName = toCamelCase name.unCType
       cName = name.unCType
-   in modify (HM.insert name (MkEnumItem e))
-        >> pure
-          [trimming|
-            {#enum ${cName} as ${hName} {underscoreToCase}
-              deriving (Show, Eq, Ord, Bounded) #}
-          |]
+  registerItem name (MkEnumItem e)
+  pure
+    [trimming|
+      {#enum ${cName} as ${hName} {underscoreToCase}
+        deriving (Show, Eq, Ord, Bounded) #}
+    |]
 
+-- | Generate a foreign import shim from a function pointer.
 genForeignImport :: FunPtrDef -> GD T.Text
 genForeignImport fp@(MkFunPtrDef name returns arguments) = do
   let hName = capitalizeFirst $ toCamelCase name.unCType
-  args <- foldl' (<>) mempty . intersperse " -> " <$> mapM genArg arguments
+
+  args <- buildText . intersperse " -> " <$> mapM genArg arguments
   let preRet = if null arguments then "" else "->"
   rets <- genArg (over #nPtrs (subtract 1) returns)
-  modify (HM.insert name (MkFunPtrItem fp))
+
+  registerItem name (MkFunPtrItem fp)
   pure
     [trimming|
       type $hName = $args $preRet IO ($rets)
@@ -375,31 +419,36 @@ genForeignImport fp@(MkFunPtrDef name returns arguments) = do
       Just (MkEnumItem _) -> "CInt"
       _ -> unHType (cItemTypeToHType cTy)
 
+-- | Generate a c2hs newtype pointer shim.
 genNewtypePtrDecl :: CType -> GD T.Text
 genNewtypePtrDecl name = do
   let hName = toCamelCase name.unCType
       cName = name.unCType
-  modify (HM.insert name (MkTypeDefItem (MkTypeDef name (MkCItem 0 name))))
-  pure [trimming|
+  registerItem name (MkTypeDefItem $ MkTypeDef name (MkCItem 0 name))
+  pure
+    [trimming|
          {#pointer $cName as ${hName} newtype #}
          deriving newtype instance Show ${hName}
        |]
 
+-- | Generate a c2hs pointer shim (for a struct).
 genPtrDecl :: CType -> T.Text
 genPtrDecl name =
   let hName = toCamelCase name.unCType
       cName = name.unCType
    in [trimming|{#pointer *$cName as ${hName}Ptr -> $hName #}|]
 
+{- | Generate a Haskell structure definition, along with a 'Storable' instance
+ and a c2hs pointer shim.
+-}
 genStruct :: StructDef -> GD T.Text
 genStruct s@(MkStructDef name fields) = do
-  fields' <- mapM genField fields
   let hName = toCamelCase name.unCType
       cName = name.unCType
-      fieldEntries =
-        foldl'
-          (<>)
-          mempty
+
+  fields' <- mapM genField fields
+  let fieldEntries =
+        buildText
           ( intersperse "\n, " $
               map (\(f, t, _) -> f.unHField <> " :: " <> t.unHType) fields'
           )
@@ -420,7 +469,7 @@ genStruct s@(MkStructDef name fields) = do
               then mempty
               else
                 "\n  <*> "
-                  <> (foldl' (<>) mempty $ intersperse "\n  <*> " accessors)
+                  <> buildText (intersperse "\n  <*> " accessors)
       Nothing -> pure ""
   let storableDecl =
         [trimming|
@@ -430,24 +479,44 @@ genStruct s@(MkStructDef name fields) = do
             peek ptr = ${hName} ${peekBody}
         |]
   modify (HM.insert name (MkStructItem s))
-  pure $
-    foldl' (<>) mempty (intersperse "\n" $ mapMaybe (^. _3) fields') <> "\n"
-      <> dataDecl
-      <> "\n"
-      <> genPtrDecl name
-      <> "\n"
-      <> storableDecl
+  pure
+    . buildText
+    . intersperse "\n"
+    $ mapMaybe (^. _3) fields' <> [dataDecl, genPtrDecl name, storableDecl]
  where
-  fieldAcquire f = "{#get " <> name.unCType <> "->" <> f.unCField <> " #} ptr"
+  fieldAcquire f = buildText ["{#get ", name.unCType, " -> ", f.unCField, " #} ptr"]
   funPtrConversionFunc fname ftype =
-    "(mk"
-      <> capitalizeFirst (toCamelCase ftype.unCType)
-      <> " <$> "
-      <> fieldAcquire fname
-      <> ")"
-  enumConversionFunc fname = "(toEnum . fromIntegral <$> " <> fieldAcquire fname <> ")"
-  structConversionFunc fname ftype = "(peek . coerce @_ @(" <> (cItemTypeToHType ftype).unHType <> ") =<< " <> fieldAcquire fname <> ")"
-  typeDefConversion fname ftype = "(coerce @_ @(" <> (cItemTypeToHType ftype).unHType <> ") <$> " <> fieldAcquire fname <> ")"
+    buildText
+      [ "(mk"
+      , capitalizeFirst (toCamelCase ftype.unCType)
+      , " <$> "
+      , fieldAcquire fname
+      , ")"
+      ]
+  enumConversionFunc fname =
+    buildText
+      [ "(toEnum . fromIntegral <$> "
+      , fieldAcquire fname
+      , ")"
+      ]
+  structConversionFunc fname ftype =
+    buildText
+      [ "(peek . coerce @_ @("
+      , (cItemTypeToHType ftype).unHType
+      , ") =<< "
+      , fieldAcquire fname
+      , ")"
+      ]
+  typeDefConversion fname ftype =
+    buildText
+      [ "(coerce @_ @("
+      , (cItemTypeToHType ftype).unHType
+      , ") <$> "
+      , fieldAcquire fname
+      , ")"
+      ]
+  -- Generate the accessor and conversion code used to peek a C struct into
+  -- a Haskell type.
   genFieldAccessor = \case
     Left (MkFieldDef name fTy) -> do
       entry <- HM.lookup fTy.item <$> get
@@ -457,18 +526,29 @@ genStruct s@(MkStructDef name fields) = do
         Just (MkStructItem _) -> structConversionFunc name (over #nPtrs (+ 1) fTy)
         Just (MkTypeDefItem _) -> typeDefConversion name fTy
         _ -> fieldAcquire name
-    -- Right (MkFunPtrDef name returns args) -> pure $ trace (show name) $ funPtrConversionFunc (MkCField $ name.unCType) returns.item
-    Right (MkFunPtrDef name returns args) ->
-      pure $ "(mk" <> capitalizeFirst (toCamelCase name.unCType) <> " <$> " <> fieldAcquire (MkCField $ name.unCType) <> ")"
+    Right (MkFunPtrDef name _ _) ->
+      pure $
+        buildText
+          [ "(mk"
+          , capitalizeFirst (toCamelCase name.unCType)
+          , " <$> "
+          , fieldAcquire (MkCField $ name.unCType)
+          , ")"
+          ]
+  -- Generate Haskell data fields from C struct fields.
   genField f =
     case f of
       Left (MkFieldDef name ty) ->
         pure
-          ( MkHField $ fromMaybe (toCamelCase name.unCField) . fmap unHField . (`HM.lookup` cFieldToHField) $ MkCField $ toCamelCase name.unCField
+          ( MkHField $
+            fromMaybe (toCamelCase name.unCField)
+              . fmap unHField
+              . (`HM.lookup` cFieldToHField)
+              $ MkCField $ toCamelCase name.unCField
           , cItemTypeToHType ty
           , Nothing
           )
-      Right fp@(MkFunPtrDef name returns args) -> do
+      Right fp@(MkFunPtrDef name _ _) -> do
         fi <- genForeignImport fp
         pure
           ( MkHField $ toCamelCase name.unCType
@@ -477,19 +557,29 @@ genStruct s@(MkStructDef name fields) = do
           Just fi
           )
 
+-- | Generate a c2hs typedef shim.
 genTypeDef :: TypeDef -> GD T.Text
 genTypeDef t@(MkTypeDef name ty) = do
   if ty.nPtrs > 0
     then genNewtypePtrDecl name
     else do
       modify (HM.insert name (MkTypeDefItem t))
-      pure $ "type " <> capitalizeFirst (toCamelCase name.unCType) <> " = {#type " <> name.unCType <> " #}"
+      pure $
+        buildText
+          [ "type "
+          , capitalizeFirst (toCamelCase name.unCType)
+          , " = {#type "
+          , name.unCType
+          , " #}"
+          ]
 
+-- | Generate any 'GdnativeItem'.
 genItem :: GdnativeItem -> GD T.Text
-genItem (MkFunPtrItem f) = genForeignImport f
-genItem (MkEnumItem e) = genEnum e
-genItem (MkStructItem s) = genStruct s
-genItem (MkTypeDefItem t) = genTypeDef t
+genItem = \case
+  MkFunPtrItem f -> genForeignImport f
+  MkEnumItem e -> genEnum e
+  MkStructItem s -> genStruct s
+  MkTypeDefItem t -> genTypeDef t
 
 parseAndGenerate :: IO T.Text
 parseAndGenerate = do
@@ -500,11 +590,9 @@ parseAndGenerate = do
       ["-Igd-haskell/godot-headers/godot/"]
       "gd-haskell/godot-headers/godot/gdnative_interface.h"
   let decls = map (\(CDeclExt d) -> d) $ case parsedGdnativeInterface of
-        Left e -> undefined
+        Left _ -> undefined
         Right (CTranslUnit t _) -> t
-
   let genItems = mapM genItem $ mapMaybe processItem decls
-
   pure $
     fileHeader
       <> "\n"
@@ -514,4 +602,4 @@ parseAndGenerate = do
          )
 
 main :: IO ()
-main = T.writeFile "gd-haskell/src/Godot/Extension/Ext.chs" =<< parseAndGenerate
+main = T.writeFile "gd-haskell/src/Godot/Extension/Extension.chs" =<< parseAndGenerate
