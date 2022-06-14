@@ -372,11 +372,10 @@ processItem decl
 genEnum :: EnumDef -> GD T.Text
 genEnum e@(MkEnumDef name) = do
   let hName = toCamelCase name.unCType
-      cName = name.unCType
   registerItem name (MkEnumItem e)
   pure
     [__i|
-      {\#enum #{cName} as #{hName} {underscoreToCase}
+      {\#enum #{unCType name} as #{hName} {underscoreToCase}
         deriving (Show, Eq, Ord, Bounded) \#}
       instance From #{hName} CInt where
         from = fromIntegral . fromEnum
@@ -405,10 +404,7 @@ genForeignImport fp@(MkFunPtrDef name returns arguments) = do
   genArg cTy = do
     entry <- HM.lookup cTy.item <$> get
     pure case entry of
-      Just (MkFunPtrItem _) ->
-        "FunPtr ("
-          <> unHType (cItemTypeToHType cTy)
-          <> ")"
+      Just (MkFunPtrItem _) -> [__i|FunPtr (#{unHType $ cItemTypeToHType cTy})|]
       Just (MkEnumItem _) -> "CInt"
       _ -> unHType (cItemTypeToHType cTy)
 
@@ -416,11 +412,10 @@ genForeignImport fp@(MkFunPtrDef name returns arguments) = do
 genNewtypePtrDecl :: CType -> GD T.Text
 genNewtypePtrDecl name = do
   let hName = toCamelCase name.unCType
-      cName = name.unCType
   registerItem name (MkTypeDefItem $ MkTypeDef name (MkCItem 0 name))
   pure
     [__i|
-         {\#pointer #{cName} as #{hName} newtype \#}
+         {\#pointer #{unCType name} as #{hName} newtype \#}
          deriving newtype instance Show #{hName}
        |]
 
@@ -428,8 +423,7 @@ genNewtypePtrDecl name = do
 genPtrDecl :: CType -> T.Text
 genPtrDecl name =
   let hName = toCamelCase name.unCType
-      cName = name.unCType
-   in [__i|{\#pointer *#{cName} as #{hName}Ptr->#{hName} \#}|]
+   in [__i|{\#pointer *#{unCType name} as #{hName}Ptr->#{hName} \#}|]
 
 {- | Generate a Haskell structure definition, along with a 'Storable' instance
  and a c2hs pointer shim.
@@ -479,7 +473,7 @@ genStruct s@(MkStructDef name fields) = do
     $ mapMaybe (^. _3) fields' <> [dataDecl, genPtrDecl name, storableDecl]
  where
   fieldAcquire f = [__i|{\#get #{unCType name}->#{unCField f}\#} ptr|] :: T.Text
-  funPtrConversionFunc fname ftype = 
+  funPtrConversionFunc fname ftype =
     [__i|
       (mk#{capitalizeFirst $ toCamelCase $ unCType ftype} <$> #{fieldAcquire fname})
     |]
