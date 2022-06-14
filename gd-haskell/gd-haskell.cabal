@@ -28,6 +28,7 @@ library
     exposed-modules:
       Godot.MyLib
       Godot.Extension.Extension
+      Godot.Extension.Ext
 
     include-dirs:
       godot-headers
