@@ -15,7 +15,6 @@ import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as BS
 import Effectful
 import Effectful.State.Static.Local
-import ExtensionApi
 import GHC.Records
 import Language.Haskell.TH
 import qualified Data.Text as T

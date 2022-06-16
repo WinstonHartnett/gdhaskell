@@ -46,9 +46,9 @@ import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Godot.Extension.Generate.Utils (
   autoGenHeader,
-  -- buildText,
+
   capitalizeFirst,
-  toCamelCase,
+  toCamelCase, cToForeignC
  )
 import Language.C (CNode, NodeInfo, fileOfNode, identToString, parseCFile)
 import Language.C.Data.Ident (Ident)
@@ -63,6 +63,9 @@ import Language.C.Syntax.AST (
   CTypeSpecifier,
  )
 import Language.C.System.GCC (newGCC)
+import Data.Coerce
+import Unsafe.Coerce (unsafeCoerce)
+import GHC.Stack (HasCallStack)
 
 fileHeader :: T.Text
 fileHeader =
@@ -76,6 +79,7 @@ fileHeader =
     {-\# LANGUAGE StrictData \#-}
     {-\# LANGUAGE TypeApplications \#-}
     {-\# LANGUAGE NoFieldSelectors \#-}
+    {-\# LANGUAGE OverloadedRecordDot \#-}
 
     module Godot.Extension.Extension where
 
@@ -84,6 +88,9 @@ fileHeader =
     import Foreign.Storable
     import Foreign.Ptr
     import Data.Coerce
+    import Data.IORef
+    import System.IO.Unsafe (unsafePerformIO)
+    import Data.Functor ((<&>))
 
     \#include <godot/gdnative_interface.h>
   |]
@@ -149,10 +156,12 @@ data GdnativeItem
   | MkTypeDefItem TypeDef
   deriving (Show)
 
-type GD = State (HM.HashMap CType GdnativeItem)
+type InterfaceGen = State (HM.HashMap CType GdnativeItem)
 
-cFieldToHField :: HM.HashMap CField HField
-cFieldToHField =
+-- | Special replacements when converting from C struct fields to Haskell
+-- fields.
+cFieldToHFieldReplace :: HM.HashMap CField HField
+cFieldToHFieldReplace =
   HM.fromList $
     map
       (\(c, h) -> (MkCField c, MkHField h))
@@ -161,28 +170,8 @@ cFieldToHField =
       , ("id", "id'")
       ]
 
-cTypeToHType :: HM.HashMap CType HType
-cTypeToHType =
-  HM.fromList $
-    map
-      (\(c, h) -> (MkCType c, MkHType h))
-      [ ("uint64_t", "CULong")
-      , ("uint32_t", "CUInt")
-      , ("uint16_t", "CUShort")
-      , ("uint8_t", "CUChar")
-      , ("int64_t", "CLong")
-      , ("int32_t", "CInt")
-      , ("int16_t", "CShort")
-      , ("int", "CInt")
-      , ("wchar_t", "CInt")
-      , ("char", "CChar")
-      , ("size_t", "CULong")
-      , ("float", "CFloat")
-      , ("double", "CDouble")
-      , ("char16_t", "CUShort")
-      , ("char32_t", "CUInt")
-      , ("void", "()")
-      ]
+cTypeToHTypeReplace :: HM.HashMap CType HType
+cTypeToHTypeReplace = unsafeCoerce cToForeignC -- TODO map over these elems like a sane person.
 
 typeSpecToCType :: [(CTypeSpecifier NodeInfo -> Maybe CType)]
 typeSpecToCType =
@@ -214,9 +203,15 @@ cItemTypeToHType (MkCItem nPtrs ty) =
     $ replicate nPtrs "Ptr ("
       <> [ unHType
             . fromMaybe (MkHType $ toCamelCase ty.unCType)
-            $ HM.lookup ty cTypeToHType
+            $ HM.lookup ty cTypeToHTypeReplace
          ]
       <> replicate nPtrs ")"
+
+cFieldToHField :: CField -> HField
+cFieldToHField cf =
+  MkHField . fromMaybe (toCamelCase cf.unCField)
+    . fmap unHField
+    . (`HM.lookup` cFieldToHFieldReplace) $ cf
 
 --------------------------------------------------------------------------------
 
@@ -295,7 +290,7 @@ declReturns decl =
 --------------------------------------------------------------------------------
 
 -- | Register a 'GdnativeItem' definition for use in future generation.
-registerItem :: CType -> GdnativeItem -> GD ()
+registerItem :: CType -> GdnativeItem -> InterfaceGen ()
 registerItem c i = modify (HM.insert c i)
 
 -- | Convert an enum 'CDeclaration' into an 'EnumDef'.
@@ -369,7 +364,7 @@ processItem decl
 --------------------------------------------------------------------------------
 
 -- | Generate a c2hs enum shim.
-genEnum :: EnumDef -> GD T.Text
+genEnum :: EnumDef -> InterfaceGen T.Text
 genEnum e@(MkEnumDef name) = do
   let hName = toCamelCase name.unCType
   registerItem name (MkEnumItem e)
@@ -384,7 +379,7 @@ genEnum e@(MkEnumDef name) = do
     |]
 
 -- | Generate a foreign import shim from a function pointer.
-genForeignImport :: FunPtrDef -> GD T.Text
+genForeignImport :: FunPtrDef -> InterfaceGen T.Text
 genForeignImport fp@(MkFunPtrDef name returns arguments) = do
   let hName = capitalizeFirst $ toCamelCase name.unCType
 
@@ -409,7 +404,7 @@ genForeignImport fp@(MkFunPtrDef name returns arguments) = do
       _ -> unHType (cItemTypeToHType cTy)
 
 -- | Generate a c2hs newtype pointer shim.
-genNewtypePtrDecl :: CType -> GD T.Text
+genNewtypePtrDecl :: CType -> InterfaceGen T.Text
 genNewtypePtrDecl name = do
   let hName = toCamelCase name.unCType
   registerItem name (MkTypeDefItem $ MkTypeDef name (MkCItem 0 name))
@@ -428,7 +423,7 @@ genPtrDecl name =
 {- | Generate a Haskell structure definition, along with a 'Storable' instance
  and a c2hs pointer shim.
 -}
-genStruct :: StructDef -> GD T.Text
+genStruct :: StructDef -> InterfaceGen T.Text
 genStruct s@(MkStructDef name fields) = do
   let hName = toCamelCase name.unCType
       cName = name.unCType
@@ -510,11 +505,7 @@ genStruct s@(MkStructDef name fields) = do
     case f of
       Left (MkFieldDef name ty) ->
         pure
-          ( MkHField $
-            fromMaybe (toCamelCase name.unCField)
-              . fmap unHField
-              . (`HM.lookup` cFieldToHField)
-              $ MkCField $ toCamelCase name.unCField
+          ( cFieldToHField $ MkCField $ toCamelCase name.unCField
           , cItemTypeToHType ty
           , Nothing
           )
@@ -528,7 +519,7 @@ genStruct s@(MkStructDef name fields) = do
           )
 
 -- | Generate a c2hs typedef shim.
-genTypeDef :: TypeDef -> GD T.Text
+genTypeDef :: TypeDef -> InterfaceGen T.Text
 genTypeDef t@(MkTypeDef name ty) = do
   if ty.nPtrs > 0
     then genNewtypePtrDecl name
@@ -541,14 +532,58 @@ genTypeDef t@(MkTypeDef name ty) = do
         |]
 
 -- | Generate any 'GdnativeItem'.
-genItem :: GdnativeItem -> GD T.Text
+genItem :: GdnativeItem -> InterfaceGen T.Text
 genItem = \case
   MkFunPtrItem f -> genForeignImport f
   MkEnumItem e -> genEnum e
-  MkStructItem s -> genStruct s
+  -- MkStructItem s -> mconcat <$> sequence [genStruct s, pure "\n", genStructHelpers s]
+  MkStructItem s@(MkStructDef n _) ->
+    if n.unCType == "GDNativeInterface"
+      then mconcat <$> sequence [genStruct s, pure "\n", genStructHelpers s]
+      else genStruct s
   MkTypeDefItem t -> genTypeDef t
 
-parseAndGenerate :: IO T.Text
+genStructHelpers :: StructDef -> InterfaceGen T.Text
+genStructHelpers (MkStructDef _ fields) =
+  mconcat
+    . intersperse "\n"
+    . mapMaybe id
+    <$> mapM fieldToHelperShim fields
+ where
+  fieldToHelperShim = \case
+    Left (MkFieldDef fn _) -> do
+      entry <- HM.lookup (MkCType $ fn.unCField) <$> get
+      pure case entry of
+        Just (MkFunPtrItem (MkFunPtrDef n _ _)) ->
+          Just $ genHelperShim (MkCField $ n.unCType)
+        _ -> Nothing
+    Right (MkFunPtrDef n _ _) -> pure $ Just $ genHelperShim (MkCField $ n.unCType)
+  genHelperShim f =
+    [__i|
+      #{unHField $ cFieldToHField f} =
+        unsafePerformIO
+          (readIORef interface <&> (.#{unHField $ cFieldToHField f}))
+      {-\# NOINLINE #{unHField $ cFieldToHField f} \#-}
+    |]
+
+footer :: T.Text
+footer =
+  [__i|
+    interface :: IORef GdnativeInterface
+    interface =
+      unsafePerformIO
+        . newIORef
+        $ error "Attempted to access GdnativeInterface before initialization!"
+    {-\# NOINLINE interface \#-}
+    
+    initInterface :: GdnativeInterfacePtr -> IO ()
+    initInterface i = writeIORef interface =<< peek i
+
+    withInterface :: (GdnativeInterface -> IO a) -> IO a
+    withInterface f = readIORef interface >>= f
+  |]
+
+parseAndGenerate :: HasCallStack => IO T.Text
 parseAndGenerate = do
   !parsedGdnativeInterface <-
     parseCFile
@@ -567,3 +602,5 @@ parseAndGenerate = do
             . intersperse "\n"
             $ fst $ runState genItems mempty
          )
+      <> "\n"
+      <> footer

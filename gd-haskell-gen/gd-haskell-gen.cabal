@@ -24,9 +24,6 @@ extra-source-files: CHANGELOG.md
 executable classgen
   main-is: Main.hs
 
-  other-modules:
-    ExtensionApi
-
   -- Modules included in this library but not exported.
   -- other-modules:
 

@@ -25,11 +25,13 @@ library
   exposed-modules:
     Godot.Extension.Generate.Api
     Godot.Extension.Generate.Interface
+    Godot.Extension.Generate.Schema
     Godot.Extension.Generate.Utils
 
   build-depends:
       aeson
     , base                  ^>=4.16.1.0
+    , bytestring
     , generic-lens
     , hashable
     , language-c
@@ -39,6 +41,11 @@ library
     , text
     , unordered-containers
     , vector
+    , vector-algorithms
+    , ghc-source-gen
+    , ghc
+    , primitive
+    , regex
 
   hs-source-dirs:   src
   ghc-options:      -Wall
@@ -53,7 +60,9 @@ executable gd-extension-gen
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   build-depends:
-      base                  ^>=4.16.1.0
+      aeson
+    , base                  ^>=4.16.1.0
+    , bytestring
     , gd-extension-gen
     , text
 

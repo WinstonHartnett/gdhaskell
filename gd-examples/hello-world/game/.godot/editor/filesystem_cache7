@@ -1,3 +1,5 @@
 0b7126e0c6e86d3ec295a72f5aa6e0bd
-::res://::1654855751
+::res://::1655330147
 icon.png::CompressedTexture2D::7301821200956262889::1654855746::1654855752::1::::<><>::
+::res://lib/::1655194644
+test_proj_library.gdextension::NativeExtension::-1::1654856334::0::1::::<><>::

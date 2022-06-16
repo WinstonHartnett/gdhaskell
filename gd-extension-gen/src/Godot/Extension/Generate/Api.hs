@@ -1,276 +1,117 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module Godot.Extension.Generate.Api where
 
-import qualified Data.Aeson as A
+import Control.Monad.Reader (MonadReader (ask), Reader)
 import qualified Data.Text as T
-import qualified Data.Vector as V
-import GHC.Generics (Generic)
-import Control.Monad.Reader (Reader)
--- import NeatInterpolation (trimming)
-import Data.String.Interpolate
+import GHC.Hs.Lit (HsLit (HsString))
+import GHC.SourceGen hiding (string)
+import GHC.Types.SourceText (SourceText (NoSourceText))
+import Godot.Extension.Generate.Schema
+import Godot.Extension.Generate.Utils (fsText, godotToForeignC)
+import qualified Data.HashMap.Strict as HM
+import Data.Maybe (fromJust)
+
+-- | Precision targets of Godot's internal `real_t`.
+--
+-- _Note:_ 32-bit builds are not supported by GHC.
+data BuildConfig
+  = Float64
+  | Double64
+
+buildConfigToText :: BuildConfig -> T.Text
+buildConfigToText Float64 = "float_64"
+buildConfigToText Double64 = "double_64"
+
+data Api = MkApi
+  { extensionApi :: ExtensionApi
+  , buildConfig  :: BuildConfig
+  }
+
+type ApiGen = Reader Api
+
+api :: ApiGen ExtensionApi
+api = (.extensionApi) <$> ask
+
+bld :: ApiGen BuildConfig
+bld = (.buildConfig) <$> ask
+
+-- | Wrapper over ghc-source-gen's 'string' function (which takes a 'String').
+string :: HasLit e => T.Text -> e
+string = lit . HsString NoSourceText . fsText
 
 --------------------------------------------------------------------------------
 
-data Header = MkHeader
-  { version_major :: Int
-  , version_minor :: Int
-  , version_patch :: Int
-  , version_status :: T.Text
-  , version_build :: T.Text
-  , version_full_name :: T.Text
-  }
-  deriving (Generic, Show)
+{- | Generate an opaque 'newtype' shim.
 
-instance A.FromJSON Header
+ @
+   newtype Vector2 = MkVector2 { unVector2 :: Ptr Vector2 }
+     deriving Show
+ @
+-}
+genNewtype :: BuiltinClass -> ApiGen HsDecl'
+genNewtype = undefined
 
-data BuiltinSize = MkBuiltinSize
-  { name :: T.Text
-  , size :: Int
-  }
-  deriving (Generic, Show)
+{- | Generate overloaded constructor instances for builtins.
 
-instance A.FromJSON BuiltinSize
+  @
+    instance MonadIO m => Construct (m Vector2) where
+      construct = liftIO do
+        vPtr <- memAlloc 8
+        ptrCstr <- ptrConstructor (from GdnativeVariantTypeVector2) 0
+        ptrCstr (coerce vPtr) nullPtr
+        pure $ MkVector2 (coerce vPtr)
+     {\-# INLINABLE construct #-\}
+  @
+-}
+genCstr :: BuiltinClass -> ApiGen HsDecl'
+genCstr cls = undefined
 
-data BuiltInClassSize = MkBuiltInClassSize
-  { build_configuration :: T.Text
-  , sizes :: V.Vector BuiltinSize
-  }
-  deriving (Generic, Show)
+-- | Generate field getters and setters for a builtin class. See 'genMemberShim'.
+genMemberShims :: BuiltinClass -> ApiGen (Maybe [HsDecl'])
+genMemberShims b =
+  case b.members of
+    Just members' -> do
+      -- typeSig OccNameStr HsType'
+      undefined
+    Nothing -> pure Nothing
 
-instance A.FromJSON BuiltInClassSize
+{- | Generate a field accessor and setter for a builtin.
 
-data ClassOffsetMember = MkClassOffsetMember
-  { member :: T.Text
-  , offset :: Int
-  }
-  deriving (Generic, Show)
+  @
+    getX :: Vector2 -> IO Double
+    getX v = from <$> peekByteOff @CDouble (coerce $ unVector v) 0
 
-instance A.FromJSON ClassOffsetMember
+    setX :: Float -> Vector2 -> IO ()
+    setX f v = pokeByteOff (unVector2 v) 0 f
+  @
+-}
+-- TODO Make this poke core structs directly?
+genMemberShim :: BuiltinClass -> BuiltinClassMember -> ApiGen [HsDecl']
+genMemberShim b m = do
+  ext <- api
+  cfg <- buildConfigToText <$> bld
+  let size' =
+        fromJust $
+          getObject cfg ext.builtin_class_sizes
+            >>= getObject (b.name)
+      offset' =
+        fromJust $
+          getObject cfg ext.builtin_class_member_offsets
+            >>= getObject (b.name)
+            >>= getObject (m.name)
+  let ty' = m.type'
+      hTy' = case HM.lookup ty' godotToForeignC of
+        Just t -> undefined
+        Nothing -> undefined
+  undefined
 
-data ClassOffset = MkClassOffset
-  { name :: T.Text
-  , members :: V.Vector ClassOffsetMember
-  }
-  deriving (Generic, Show)
+{- | Generate methods.
 
-instance A.FromJSON ClassOffset
-
-data BuiltinClassMemberOffsets = MkBuiltinClassMemberOffsets
-  { build_configuration :: T.Text
-  , classes :: V.Vector ClassOffset
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON BuiltinClassMemberOffsets
-
-data EnumValue = MkEnumValue
-  { name :: T.Text
-  , value :: Int
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON EnumValue
-
-data EnumEntry = MkEnumEntry
-  { name :: T.Text
-  , values :: V.Vector EnumValue
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON EnumEntry
-
-data Argument = MkArgument
-  { name :: T.Text
-  , type' :: T.Text
-  , default_value :: Maybe T.Text
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Argument where
-  parseJSON (A.Object v) =
-    MkArgument
-      <$> v A..: "name"
-      <*> v A..: "type"
-      <*> v A..:? "default_value"
-  parseJSON _ = mempty
-
-data UtilityFunction = MkUtilityFunction
-  { name :: T.Text
-  , return_type :: Maybe T.Text
-  , category :: T.Text
-  , is_vararg :: Bool
-  , hash :: Int
-  , arguments :: Maybe (V.Vector Argument)
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON UtilityFunction
-
-data Operator = MkOperator
-  { name :: T.Text
-  , right_type :: Maybe T.Text
-  , return_type :: T.Text
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Operator
-
-data Constructor = MkConstructor
-  { index :: Int
-  , arguments :: (Maybe (V.Vector Argument))
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Constructor
-
-data Method = MkMethod
-  { name :: T.Text
-  , return_type :: Maybe T.Text
-  , is_vararg :: Bool
-  , is_const :: Bool
-  , is_static :: Maybe Bool
-  , hash :: Maybe Int
-  , arguments :: Maybe (V.Vector Argument)
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Method
-
-data BuiltinClassMember = MkBuiltinClassMember
-  { name :: T.Text
-  , type' :: T.Text
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON BuiltinClassMember where
-  parseJSON (A.Object v) =
-    MkBuiltinClassMember
-      <$> v A..: "name"
-      <*> v A..: "type"
-  parseJSON _ = mempty
-
-data Constant = MkConstant
-  { name :: T.Text
-  , type' :: T.Text
-  , value :: T.Text
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Constant where
-  parseJSON (A.Object v) =
-    MkConstant
-      <$> v A..: "name"
-      <*> v A..: "type"
-      <*> v A..: "value"
-  parseJSON _ = mempty
-
-data BuiltinClass = MkBuiltinClass
-  { name :: T.Text
-  , is_keyed :: Maybe Bool
-  , operators :: V.Vector Operator
-  , indexing_return_type :: Maybe T.Text
-  , constructors :: V.Vector Constructor
-  , methods :: Maybe (V.Vector Method)
-  , constants :: Maybe (V.Vector Constant)
-  , members :: Maybe (V.Vector BuiltinClassMember)
-  , has_destructor :: Bool
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON BuiltinClass
-
-data Signal = MkSignal
-  { name :: T.Text
-  , arguments :: Maybe (V.Vector Argument)
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Signal
-
-data Property = MkProperty
-  { type' :: T.Text
-  , name :: T.Text
-  , setter :: T.Text
-  , getter :: T.Text
-  , index :: Int
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Property where
-  parseJSON (A.Object v) =
-    MkProperty
-      <$> v A..: "type"
-      <*> v A..: "name"
-      <*> v A..: "setter"
-      <*> v A..: "getter"
-      <*> v A..: "index"
-  parseJSON _ = mempty
-
-data Class = MkClass
-  { name :: T.Text
-  , is_refcounted :: Bool
-  , is_instantiable :: Bool
-  , inherits :: Maybe T.Text
-  , api_type :: T.Text
-  , enums :: Maybe (V.Vector EnumEntry)
-  , methods :: Maybe (V.Vector Method)
-  , signals :: Maybe (V.Vector Signal)
-  , properties :: Maybe (V.Vector Property)
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON Class
-
-data SingletonEntry = MkSingletonEntry
-  { name :: T.Text
-  , type' :: T.Text
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON SingletonEntry where
-  parseJSON (A.Object v) =
-    MkSingletonEntry
-      <$> v A..: "name"
-      <*> v A..: "type"
-  parseJSON _ = mempty
-
-data NativeStructureEntry = MkNativeStructureEntry
-  { name :: T.Text
-  , format :: T.Text
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON NativeStructureEntry
-
-data ExtensionApi = MkExtensionApi
-  { header :: Header
-  , builtin_class_sizes :: V.Vector BuiltInClassSize
-  , builtin_class_member_offsets :: V.Vector BuiltinClassMemberOffsets
-  , global_constants :: V.Vector ()
-  , global_enums :: V.Vector EnumEntry
-  , utility_functions :: V.Vector UtilityFunction
-  , builtin_classes :: V.Vector BuiltinClass
-  , classes :: V.Vector Class
-  , singletons :: V.Vector SingletonEntry
-  , native_structures :: V.Vector NativeStructureEntry
-  }
-  deriving (Generic, Show)
-
-instance A.FromJSON ExtensionApi
-
---------------------------------------------------------------------------------
-
-genBuiltinClass :: BuiltinClass -> Reader ExtensionApi T.Text
-genBuiltinClass cls = undefined
-  -- let (decl :: T.Text) =
-  --       [i|
-  --         newtype 
-  --       |]
-  -- undefined
+ @
+   angle :: Vector2 -> IO Float
+   angle =
+-}
+genMethods :: BuiltinClass -> ApiGen HsDecl'
+genMethods = undefined

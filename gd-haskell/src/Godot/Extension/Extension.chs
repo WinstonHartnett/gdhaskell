@@ -7,6 +7,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Godot.Extension.Extension where
 
@@ -15,6 +16,9 @@ import Foreign.C
 import Foreign.Storable
 import Foreign.Ptr
 import Data.Coerce
+import Data.IORef
+import System.IO.Unsafe (unsafePerformIO)
+import Data.Functor ((<&>))
 
 #include <godot/gdnative_interface.h>
 type Char32T =
@@ -167,10 +171,10 @@ type GdnativeExtensionClassGet = GDExtensionClassInstancePtr -> GdnativeStringNa
 foreign import ccall "dynamic" mkGdnativeExtensionClassGet
   :: FunPtr GdnativeExtensionClassGet
   -> GdnativeExtensionClassGet
-type GdnativeExtensionClassGetRID = GDExtensionClassInstancePtr -> IO (CULong)
-foreign import ccall "dynamic" mkGdnativeExtensionClassGetRID
-  :: FunPtr GdnativeExtensionClassGetRID
-  -> GdnativeExtensionClassGetRID
+type GdnativeExtensionClassGetRid = GDExtensionClassInstancePtr -> IO (CULong)
+foreign import ccall "dynamic" mkGdnativeExtensionClassGetRid
+  :: FunPtr GdnativeExtensionClassGetRid
+  -> GdnativeExtensionClassGetRid
 data GdnativePropertyInfo = GdnativePropertyInfo
   { type' :: CUInt
   , name :: Ptr (CChar)
@@ -269,7 +273,7 @@ data GdnativeExtensionClassCreationInfo = GdnativeExtensionClassCreationInfo
   , createInstanceFunc :: GdnativeExtensionClassCreateInstance
   , freeInstanceFunc :: GdnativeExtensionClassFreeInstance
   , getVirtualFunc :: GdnativeExtensionClassGetVirtual
-  , getRidFunc :: GdnativeExtensionClassGetRID
+  , getRidFunc :: GdnativeExtensionClassGetRid
   , classUserdata :: Ptr (())
   }
 {#pointer *GDNativeExtensionClassCreationInfo as GdnativeExtensionClassCreationInfoPtr->GdnativeExtensionClassCreationInfo #}
@@ -288,7 +292,7 @@ instance Storable GdnativeExtensionClassCreationInfo where
     <*> (mkGdnativeExtensionClassCreateInstance <$> {#get GDNativeExtensionClassCreationInfo->create_instance_func#} ptr)
     <*> (mkGdnativeExtensionClassFreeInstance <$> {#get GDNativeExtensionClassCreationInfo->free_instance_func#} ptr)
     <*> (mkGdnativeExtensionClassGetVirtual <$> {#get GDNativeExtensionClassCreationInfo->get_virtual_func#} ptr)
-    <*> (mkGdnativeExtensionClassGetRID <$> {#get GDNativeExtensionClassCreationInfo->get_rid_func#} ptr)
+    <*> (mkGdnativeExtensionClassGetRid <$> {#get GDNativeExtensionClassCreationInfo->get_rid_func#} ptr)
     <*> {#get GDNativeExtensionClassCreationInfo->class_userdata#} ptr
 {#pointer GDNativeExtensionClassLibraryPtr as GdnativeExtensionClassLibraryPtr newtype #}
 deriving newtype instance Show GdnativeExtensionClassLibraryPtr
@@ -1213,6 +1217,478 @@ instance Storable GdnativeInterface where
     <*> (mkClassdbRegisterExtensionClassSignal <$> {#get GDNativeInterface->classdb_register_extension_class_signal#} ptr)
     <*> (mkClassdbUnregisterExtensionClass <$> {#get GDNativeInterface->classdb_unregister_extension_class#} ptr)
     <*> (mkGetLibraryPath <$> {#get GDNativeInterface->get_library_path#} ptr)
+memAlloc =
+  unsafePerformIO
+    (readIORef interface <&> (.memAlloc))
+{-# NOINLINE memAlloc #-}
+memRealloc =
+  unsafePerformIO
+    (readIORef interface <&> (.memRealloc))
+{-# NOINLINE memRealloc #-}
+memFree =
+  unsafePerformIO
+    (readIORef interface <&> (.memFree))
+{-# NOINLINE memFree #-}
+printError =
+  unsafePerformIO
+    (readIORef interface <&> (.printError))
+{-# NOINLINE printError #-}
+printWarning =
+  unsafePerformIO
+    (readIORef interface <&> (.printWarning))
+{-# NOINLINE printWarning #-}
+printScriptError =
+  unsafePerformIO
+    (readIORef interface <&> (.printScriptError))
+{-# NOINLINE printScriptError #-}
+getNativeStructSize =
+  unsafePerformIO
+    (readIORef interface <&> (.getNativeStructSize))
+{-# NOINLINE getNativeStructSize #-}
+variantNewCopy =
+  unsafePerformIO
+    (readIORef interface <&> (.variantNewCopy))
+{-# NOINLINE variantNewCopy #-}
+variantNewNil =
+  unsafePerformIO
+    (readIORef interface <&> (.variantNewNil))
+{-# NOINLINE variantNewNil #-}
+variantDestroy =
+  unsafePerformIO
+    (readIORef interface <&> (.variantDestroy))
+{-# NOINLINE variantDestroy #-}
+variantCall =
+  unsafePerformIO
+    (readIORef interface <&> (.variantCall))
+{-# NOINLINE variantCall #-}
+variantCallStatic =
+  unsafePerformIO
+    (readIORef interface <&> (.variantCallStatic))
+{-# NOINLINE variantCallStatic #-}
+variantEvaluate =
+  unsafePerformIO
+    (readIORef interface <&> (.variantEvaluate))
+{-# NOINLINE variantEvaluate #-}
+variantSet =
+  unsafePerformIO
+    (readIORef interface <&> (.variantSet))
+{-# NOINLINE variantSet #-}
+variantSetNamed =
+  unsafePerformIO
+    (readIORef interface <&> (.variantSetNamed))
+{-# NOINLINE variantSetNamed #-}
+variantSetKeyed =
+  unsafePerformIO
+    (readIORef interface <&> (.variantSetKeyed))
+{-# NOINLINE variantSetKeyed #-}
+variantSetIndexed =
+  unsafePerformIO
+    (readIORef interface <&> (.variantSetIndexed))
+{-# NOINLINE variantSetIndexed #-}
+variantGet =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGet))
+{-# NOINLINE variantGet #-}
+variantGetNamed =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetNamed))
+{-# NOINLINE variantGetNamed #-}
+variantGetKeyed =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetKeyed))
+{-# NOINLINE variantGetKeyed #-}
+variantGetIndexed =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetIndexed))
+{-# NOINLINE variantGetIndexed #-}
+variantIterInit =
+  unsafePerformIO
+    (readIORef interface <&> (.variantIterInit))
+{-# NOINLINE variantIterInit #-}
+variantIterNext =
+  unsafePerformIO
+    (readIORef interface <&> (.variantIterNext))
+{-# NOINLINE variantIterNext #-}
+variantIterGet =
+  unsafePerformIO
+    (readIORef interface <&> (.variantIterGet))
+{-# NOINLINE variantIterGet #-}
+variantHash =
+  unsafePerformIO
+    (readIORef interface <&> (.variantHash))
+{-# NOINLINE variantHash #-}
+variantRecursiveHash =
+  unsafePerformIO
+    (readIORef interface <&> (.variantRecursiveHash))
+{-# NOINLINE variantRecursiveHash #-}
+variantHashCompare =
+  unsafePerformIO
+    (readIORef interface <&> (.variantHashCompare))
+{-# NOINLINE variantHashCompare #-}
+variantBooleanize =
+  unsafePerformIO
+    (readIORef interface <&> (.variantBooleanize))
+{-# NOINLINE variantBooleanize #-}
+variantSub =
+  unsafePerformIO
+    (readIORef interface <&> (.variantSub))
+{-# NOINLINE variantSub #-}
+variantBlend =
+  unsafePerformIO
+    (readIORef interface <&> (.variantBlend))
+{-# NOINLINE variantBlend #-}
+variantInterpolate =
+  unsafePerformIO
+    (readIORef interface <&> (.variantInterpolate))
+{-# NOINLINE variantInterpolate #-}
+variantDuplicate =
+  unsafePerformIO
+    (readIORef interface <&> (.variantDuplicate))
+{-# NOINLINE variantDuplicate #-}
+variantStringify =
+  unsafePerformIO
+    (readIORef interface <&> (.variantStringify))
+{-# NOINLINE variantStringify #-}
+variantGetType =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetType))
+{-# NOINLINE variantGetType #-}
+variantHasMethod =
+  unsafePerformIO
+    (readIORef interface <&> (.variantHasMethod))
+{-# NOINLINE variantHasMethod #-}
+variantHasMember =
+  unsafePerformIO
+    (readIORef interface <&> (.variantHasMember))
+{-# NOINLINE variantHasMember #-}
+variantHasKey =
+  unsafePerformIO
+    (readIORef interface <&> (.variantHasKey))
+{-# NOINLINE variantHasKey #-}
+variantGetTypeName =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetTypeName))
+{-# NOINLINE variantGetTypeName #-}
+variantCanConvert =
+  unsafePerformIO
+    (readIORef interface <&> (.variantCanConvert))
+{-# NOINLINE variantCanConvert #-}
+variantCanConvertStrict =
+  unsafePerformIO
+    (readIORef interface <&> (.variantCanConvertStrict))
+{-# NOINLINE variantCanConvertStrict #-}
+getVariantFromTypeConstructor =
+  unsafePerformIO
+    (readIORef interface <&> (.getVariantFromTypeConstructor))
+{-# NOINLINE getVariantFromTypeConstructor #-}
+getVariantToTypeConstructor =
+  unsafePerformIO
+    (readIORef interface <&> (.getVariantToTypeConstructor))
+{-# NOINLINE getVariantToTypeConstructor #-}
+variantGetPtrOperatorEvaluator =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrOperatorEvaluator))
+{-# NOINLINE variantGetPtrOperatorEvaluator #-}
+variantGetPtrBuiltinMethod =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrBuiltinMethod))
+{-# NOINLINE variantGetPtrBuiltinMethod #-}
+variantGetPtrConstructor =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrConstructor))
+{-# NOINLINE variantGetPtrConstructor #-}
+variantGetPtrDestructor =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrDestructor))
+{-# NOINLINE variantGetPtrDestructor #-}
+variantConstruct =
+  unsafePerformIO
+    (readIORef interface <&> (.variantConstruct))
+{-# NOINLINE variantConstruct #-}
+variantGetPtrSetter =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrSetter))
+{-# NOINLINE variantGetPtrSetter #-}
+variantGetPtrGetter =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrGetter))
+{-# NOINLINE variantGetPtrGetter #-}
+variantGetPtrIndexedSetter =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrIndexedSetter))
+{-# NOINLINE variantGetPtrIndexedSetter #-}
+variantGetPtrIndexedGetter =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrIndexedGetter))
+{-# NOINLINE variantGetPtrIndexedGetter #-}
+variantGetPtrKeyedSetter =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrKeyedSetter))
+{-# NOINLINE variantGetPtrKeyedSetter #-}
+variantGetPtrKeyedGetter =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrKeyedGetter))
+{-# NOINLINE variantGetPtrKeyedGetter #-}
+variantGetPtrKeyedChecker =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrKeyedChecker))
+{-# NOINLINE variantGetPtrKeyedChecker #-}
+variantGetConstantValue =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetConstantValue))
+{-# NOINLINE variantGetConstantValue #-}
+variantGetPtrUtilityFunction =
+  unsafePerformIO
+    (readIORef interface <&> (.variantGetPtrUtilityFunction))
+{-# NOINLINE variantGetPtrUtilityFunction #-}
+stringNewWithLatin1Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithLatin1Chars))
+{-# NOINLINE stringNewWithLatin1Chars #-}
+stringNewWithUtf8Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithUtf8Chars))
+{-# NOINLINE stringNewWithUtf8Chars #-}
+stringNewWithUtf16Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithUtf16Chars))
+{-# NOINLINE stringNewWithUtf16Chars #-}
+stringNewWithUtf32Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithUtf32Chars))
+{-# NOINLINE stringNewWithUtf32Chars #-}
+stringNewWithWideChars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithWideChars))
+{-# NOINLINE stringNewWithWideChars #-}
+stringNewWithLatin1CharsAndLen =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithLatin1CharsAndLen))
+{-# NOINLINE stringNewWithLatin1CharsAndLen #-}
+stringNewWithUtf8CharsAndLen =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithUtf8CharsAndLen))
+{-# NOINLINE stringNewWithUtf8CharsAndLen #-}
+stringNewWithUtf16CharsAndLen =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithUtf16CharsAndLen))
+{-# NOINLINE stringNewWithUtf16CharsAndLen #-}
+stringNewWithUtf32CharsAndLen =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithUtf32CharsAndLen))
+{-# NOINLINE stringNewWithUtf32CharsAndLen #-}
+stringNewWithWideCharsAndLen =
+  unsafePerformIO
+    (readIORef interface <&> (.stringNewWithWideCharsAndLen))
+{-# NOINLINE stringNewWithWideCharsAndLen #-}
+stringToLatin1Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringToLatin1Chars))
+{-# NOINLINE stringToLatin1Chars #-}
+stringToUtf8Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringToUtf8Chars))
+{-# NOINLINE stringToUtf8Chars #-}
+stringToUtf16Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringToUtf16Chars))
+{-# NOINLINE stringToUtf16Chars #-}
+stringToUtf32Chars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringToUtf32Chars))
+{-# NOINLINE stringToUtf32Chars #-}
+stringToWideChars =
+  unsafePerformIO
+    (readIORef interface <&> (.stringToWideChars))
+{-# NOINLINE stringToWideChars #-}
+stringOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.stringOperatorIndex))
+{-# NOINLINE stringOperatorIndex #-}
+stringOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.stringOperatorIndexConst))
+{-# NOINLINE stringOperatorIndexConst #-}
+packedByteArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedByteArrayOperatorIndex))
+{-# NOINLINE packedByteArrayOperatorIndex #-}
+packedByteArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedByteArrayOperatorIndexConst))
+{-# NOINLINE packedByteArrayOperatorIndexConst #-}
+packedColorArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedColorArrayOperatorIndex))
+{-# NOINLINE packedColorArrayOperatorIndex #-}
+packedColorArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedColorArrayOperatorIndexConst))
+{-# NOINLINE packedColorArrayOperatorIndexConst #-}
+packedFloat32ArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedFloat32ArrayOperatorIndex))
+{-# NOINLINE packedFloat32ArrayOperatorIndex #-}
+packedFloat32ArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedFloat32ArrayOperatorIndexConst))
+{-# NOINLINE packedFloat32ArrayOperatorIndexConst #-}
+packedFloat64ArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedFloat64ArrayOperatorIndex))
+{-# NOINLINE packedFloat64ArrayOperatorIndex #-}
+packedFloat64ArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedFloat64ArrayOperatorIndexConst))
+{-# NOINLINE packedFloat64ArrayOperatorIndexConst #-}
+packedInt32ArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedInt32ArrayOperatorIndex))
+{-# NOINLINE packedInt32ArrayOperatorIndex #-}
+packedInt32ArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedInt32ArrayOperatorIndexConst))
+{-# NOINLINE packedInt32ArrayOperatorIndexConst #-}
+packedInt64ArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedInt64ArrayOperatorIndex))
+{-# NOINLINE packedInt64ArrayOperatorIndex #-}
+packedInt64ArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedInt64ArrayOperatorIndexConst))
+{-# NOINLINE packedInt64ArrayOperatorIndexConst #-}
+packedStringArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedStringArrayOperatorIndex))
+{-# NOINLINE packedStringArrayOperatorIndex #-}
+packedStringArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedStringArrayOperatorIndexConst))
+{-# NOINLINE packedStringArrayOperatorIndexConst #-}
+packedVector2ArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedVector2ArrayOperatorIndex))
+{-# NOINLINE packedVector2ArrayOperatorIndex #-}
+packedVector2ArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedVector2ArrayOperatorIndexConst))
+{-# NOINLINE packedVector2ArrayOperatorIndexConst #-}
+packedVector3ArrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.packedVector3ArrayOperatorIndex))
+{-# NOINLINE packedVector3ArrayOperatorIndex #-}
+packedVector3ArrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.packedVector3ArrayOperatorIndexConst))
+{-# NOINLINE packedVector3ArrayOperatorIndexConst #-}
+arrayOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.arrayOperatorIndex))
+{-# NOINLINE arrayOperatorIndex #-}
+arrayOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.arrayOperatorIndexConst))
+{-# NOINLINE arrayOperatorIndexConst #-}
+dictionaryOperatorIndex =
+  unsafePerformIO
+    (readIORef interface <&> (.dictionaryOperatorIndex))
+{-# NOINLINE dictionaryOperatorIndex #-}
+dictionaryOperatorIndexConst =
+  unsafePerformIO
+    (readIORef interface <&> (.dictionaryOperatorIndexConst))
+{-# NOINLINE dictionaryOperatorIndexConst #-}
+objectMethodBindCall =
+  unsafePerformIO
+    (readIORef interface <&> (.objectMethodBindCall))
+{-# NOINLINE objectMethodBindCall #-}
+objectMethodBindPtrcall =
+  unsafePerformIO
+    (readIORef interface <&> (.objectMethodBindPtrcall))
+{-# NOINLINE objectMethodBindPtrcall #-}
+objectDestroy =
+  unsafePerformIO
+    (readIORef interface <&> (.objectDestroy))
+{-# NOINLINE objectDestroy #-}
+globalGetSingleton =
+  unsafePerformIO
+    (readIORef interface <&> (.globalGetSingleton))
+{-# NOINLINE globalGetSingleton #-}
+objectGetInstanceBinding =
+  unsafePerformIO
+    (readIORef interface <&> (.objectGetInstanceBinding))
+{-# NOINLINE objectGetInstanceBinding #-}
+objectSetInstanceBinding =
+  unsafePerformIO
+    (readIORef interface <&> (.objectSetInstanceBinding))
+{-# NOINLINE objectSetInstanceBinding #-}
+objectSetInstance =
+  unsafePerformIO
+    (readIORef interface <&> (.objectSetInstance))
+{-# NOINLINE objectSetInstance #-}
+objectCastTo =
+  unsafePerformIO
+    (readIORef interface <&> (.objectCastTo))
+{-# NOINLINE objectCastTo #-}
+objectGetInstanceFromId =
+  unsafePerformIO
+    (readIORef interface <&> (.objectGetInstanceFromId))
+{-# NOINLINE objectGetInstanceFromId #-}
+objectGetInstanceId =
+  unsafePerformIO
+    (readIORef interface <&> (.objectGetInstanceId))
+{-# NOINLINE objectGetInstanceId #-}
+scriptInstanceCreate =
+  unsafePerformIO
+    (readIORef interface <&> (.scriptInstanceCreate))
+{-# NOINLINE scriptInstanceCreate #-}
+classdbConstructObject =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbConstructObject))
+{-# NOINLINE classdbConstructObject #-}
+classdbGetMethodBind =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbGetMethodBind))
+{-# NOINLINE classdbGetMethodBind #-}
+classdbGetClassTag =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbGetClassTag))
+{-# NOINLINE classdbGetClassTag #-}
+classdbRegisterExtensionClass =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClass))
+{-# NOINLINE classdbRegisterExtensionClass #-}
+classdbRegisterExtensionClassMethod =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClassMethod))
+{-# NOINLINE classdbRegisterExtensionClassMethod #-}
+classdbRegisterExtensionClassIntegerConstant =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClassIntegerConstant))
+{-# NOINLINE classdbRegisterExtensionClassIntegerConstant #-}
+classdbRegisterExtensionClassProperty =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClassProperty))
+{-# NOINLINE classdbRegisterExtensionClassProperty #-}
+classdbRegisterExtensionClassPropertyGroup =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClassPropertyGroup))
+{-# NOINLINE classdbRegisterExtensionClassPropertyGroup #-}
+classdbRegisterExtensionClassPropertySubgroup =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClassPropertySubgroup))
+{-# NOINLINE classdbRegisterExtensionClassPropertySubgroup #-}
+classdbRegisterExtensionClassSignal =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbRegisterExtensionClassSignal))
+{-# NOINLINE classdbRegisterExtensionClassSignal #-}
+classdbUnregisterExtensionClass =
+  unsafePerformIO
+    (readIORef interface <&> (.classdbUnregisterExtensionClass))
+{-# NOINLINE classdbUnregisterExtensionClass #-}
+getLibraryPath =
+  unsafePerformIO
+    (readIORef interface <&> (.getLibraryPath))
+{-# NOINLINE getLibraryPath #-}
 {#enum GDNativeInitializationLevel as GdnativeInitializationLevel {underscoreToCase}
   deriving (Show, Eq, Ord, Bounded) #}
 instance From GdnativeInitializationLevel CInt where
@@ -1246,3 +1722,15 @@ type GdnativeInitializationFunction = Ptr (GdnativeInterface) -> GdnativeExtensi
 foreign import ccall "dynamic" mkGdnativeInitializationFunction
   :: FunPtr GdnativeInitializationFunction
   -> GdnativeInitializationFunction
+interface :: IORef GdnativeInterface
+interface =
+  unsafePerformIO
+    . newIORef
+    $ error "Attempted to access GdnativeInterface before initialization!"
+{-# NOINLINE interface #-}
+
+initInterface :: GdnativeInterfacePtr -> IO ()
+initInterface i = writeIORef interface =<< peek i
+
+withInterface :: (GdnativeInterface -> IO a) -> IO a
+withInterface f = readIORef interface >>= f

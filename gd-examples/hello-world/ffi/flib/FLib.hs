@@ -21,7 +21,7 @@ import Data.Coerce
 import Foreign.C
 import Control.Monad
 import System.IO
-import GHC.IO (unsafePerformIO)
+import GHC.IO (unsafePerformIO, bracket)
 import Data.IORef
 import GHC.Records
 import Data.String (IsString)
@@ -34,46 +34,56 @@ printCString ptr = do
     then putChar val >> printCString (ptr `plusPtr` 1)
     else putChar '\n'
 
-interface :: IORef GdnativeInterface
-interface = unsafePerformIO $ newIORef (error "GdnativeInterface is unitialized!")
-{-# NOINLINE interface #-}
+instance From CDouble Double where
+  from = realToFrac
 
-getInterface :: IO GdnativeInterface
-getInterface = readIORef interface
+getX :: GdnativeVariantPtr -> IO Double
+getX v = do
+  bracket
+    (malloc @CDouble)
+    free
+    \r -> __getXBind (coerce v) (coerce r) >> fmap (from @CDouble @Double) (peek r)
+ where
+  __getXBind :: GdnativePtrGetter
+  __getXBind = unsafePerformIO $
+    withCString "x" \ptr -> do
+      mkGdnativePtrGetter <$> variantGetPtrGetter (from GdnativeVariantTypeVector2) ptr
+  {-# NOINLINE __getXBind #-}
 
 godot_library_init :: GdnativeInterfacePtr -> GdnativeExtensionClassLibraryPtr -> GdnativeInitializationPtr -> IO ()
 godot_library_init p_interface p_library r_initialization = do
   putStrLn ">>>> Initialized."
-  interface' <- peek p_interface
-  writeIORef interface interface'
-  
-  !err <- coerce @_ @GdnativeCallErrorPtr <$> interface'.memAlloc 12
-  !quatPtr <- coerce @_ @GdnativeVariantPtr <$> interface'.memAlloc 16
+  initInterface p_interface
 
-  interface'.variantNewNil quatPtr
-  interface'.variantConstruct 
-    (from GdnativeVariantTypeQuaternion)
-    quatPtr
-    nullPtr
-    0
-    err
-  
-  stringPtr <- coerce @_ @GdnativeVariantPtr <$> interface'.memAlloc 8
-  
-  withCString "x" \cstr -> 
-    interface'.stringNewWithLatin1Chars (coerce stringPtr) cstr
-  
-  floatPtr <- coerce @_ @GdnativeVariantPtr <$> interface'.memAlloc 40
-  interface'.variantConstruct 
-    (from GdnativeVariantTypeFloat)
-    floatPtr
-    nullPtr
-    0
-    err
+  -- !err <- coerce @_ @GdnativeCallErrorPtr <$> memAlloc 12
+  !vPtr <- coerce @_ @GdnativeVariantPtr <$> memAlloc 8
 
-  boolPtr <- coerce @_ @(Ptr GdnativeBool) <$> interface'.memAlloc 1
+  !vCstr <- mkGdnativePtrConstructor <$> variantGetPtrConstructor (from GdnativeVariantTypeVector2) 0
+  vCstr (coerce vPtr) nullPtr
+  flt5 <- coerce @_ @(Ptr CDouble) <$> memAlloc 8 
+  poke flt5 (realToFrac $ (5.0 :: Double))
+  setXBind (coerce vPtr) (coerce flt5)
+  
+  print =<< getX vPtr
+  -- !vStr <- withCString "x" \cstr ->
+  --   mkGdnativePtrSetter <$> variantGetPtrSetter (from GdnativeVariantTypeVector2) cstr
+
+  -- vStr (coerce vPtr) (coerce flt5)
+
+  -- print =<< peek flt5
+  -- memFree (coerce flt5)
+  
+  -- print =<< peekByteOff @CFloat (coerce vPtr) 0
 
   putStrLn ">>>> Got here."
   undefined
+ where
+  setXBind :: GdnativePtrSetter
+  setXBind = 
+    unsafePerformIO do
+      putStrLn ">>>> SET <<<<"
+      withCString "x" \cstr ->
+        mkGdnativePtrSetter <$> variantGetPtrSetter (from GdnativeVariantTypeVector2) cstr
+  {-# NOINLINE setXBind #-}
 
 foreign export ccall godot_library_init :: GdnativeInterfacePtr -> GdnativeExtensionClassLibraryPtr -> GdnativeInitializationPtr -> IO ()
