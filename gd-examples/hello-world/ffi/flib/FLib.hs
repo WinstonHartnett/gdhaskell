@@ -55,16 +55,17 @@ godot_library_init p_interface p_library r_initialization = do
   putStrLn ">>>> Initialized."
   initInterface p_interface
 
-  -- !err <- coerce @_ @GdnativeCallErrorPtr <$> memAlloc 12
-  !vPtr <- coerce @_ @GdnativeVariantPtr <$> memAlloc 8
-
-  !vCstr <- mkGdnativePtrConstructor <$> variantGetPtrConstructor (from GdnativeVariantTypeVector2) 0
-  vCstr (coerce vPtr) nullPtr
-  flt5 <- coerce @_ @(Ptr CDouble) <$> memAlloc 8 
-  poke flt5 (realToFrac $ (5.0 :: Double))
-  setXBind (coerce vPtr) (coerce flt5)
   
-  print =<< getX vPtr
+  -- !err <- coerce @_ @GdnativeCallErrorPtr <$> memAlloc 12
+  -- !vPtr <- coerce @_ @GdnativeVariantPtr <$> memAlloc 8
+
+  -- !vCstr <- mkGdnativePtrConstructor <$> variantGetPtrConstructor (from GdnativeVariantTypeVector2) 0
+  -- vCstr (coerce vPtr) nullPtr
+  -- flt5 <- coerce @_ @(Ptr CDouble) <$> memAlloc 8 
+  -- poke flt5 (realToFrac $ (5.0 :: Double))
+  -- setXBind (coerce vPtr) (coerce flt5)
+  
+  -- print =<< getX vPtr
   -- !vStr <- withCString "x" \cstr ->
   --   mkGdnativePtrSetter <$> variantGetPtrSetter (from GdnativeVariantTypeVector2) cstr
 

@@ -298,7 +298,7 @@ data ExtensionApi = MkExtensionApi
     ObjectMap
       "build_configuration"
       "classes"
-      (ObjectMap "name" "members" (ObjectMap "name" "offset" Int))
+      (ObjectMap "name" "members" (ObjectMap "member" "offset" Int))
   , global_constants :: V.Vector ()
   , global_enums ::
     ObjectMap

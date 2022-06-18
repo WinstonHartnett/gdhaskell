@@ -45,6 +45,7 @@ library
       , witch
       , lens
       , template-haskell
+      , gd-extension-gen
       , vector
     hs-source-dirs:   src
     ghc-options: -freverse-errors

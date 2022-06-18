@@ -76,6 +76,7 @@ instance Storable GdnativeCallError where
     <$> (toEnum . fromIntegral <$> {#get GDNativeCallError->error#} ptr)
     <*> {#get GDNativeCallError->argument#} ptr
     <*> {#get GDNativeCallError->expected#} ptr
+  poke _ _ = error "Don't poke GdnativeCallError"
 type GdnativeVariantFromTypeConstructorFunc = GdnativeVariantPtr -> GdnativeTypePtr -> IO (())
 foreign import ccall "dynamic" mkGdnativeVariantFromTypeConstructorFunc
   :: FunPtr GdnativeVariantFromTypeConstructorFunc
@@ -161,6 +162,7 @@ instance Storable GdnativeInstanceBindingCallbacks where
     <$> (mkGdnativeInstanceBindingCreateCallback <$> {#get GDNativeInstanceBindingCallbacks->create_callback#} ptr)
     <*> (mkGdnativeInstanceBindingFreeCallback <$> {#get GDNativeInstanceBindingCallbacks->free_callback#} ptr)
     <*> (mkGdnativeInstanceBindingReferenceCallback <$> {#get GDNativeInstanceBindingCallbacks->reference_callback#} ptr)
+  poke _ _ = error "Don't poke GdnativeInstanceBindingCallbacks"
 {#pointer GDExtensionClassInstancePtr as GDExtensionClassInstancePtr newtype #}
 deriving newtype instance Show GDExtensionClassInstancePtr
 type GdnativeExtensionClassSet = GDExtensionClassInstancePtr -> GdnativeStringNamePtr -> GdnativeVariantPtr -> IO (GdnativeBool)
@@ -194,6 +196,7 @@ instance Storable GdnativePropertyInfo where
     <*> {#get GDNativePropertyInfo->hint#} ptr
     <*> {#get GDNativePropertyInfo->hint_string#} ptr
     <*> {#get GDNativePropertyInfo->usage#} ptr
+  poke _ _ = error "Don't poke GdnativePropertyInfo"
 data GdnativeMethodInfo = GdnativeMethodInfo
   { name :: Ptr (CChar)
   , returnValue :: GdnativePropertyInfo
@@ -217,6 +220,7 @@ instance Storable GdnativeMethodInfo where
     <*> {#get GDNativeMethodInfo->argument_count#} ptr
     <*> (coerce @_ @(GdnativeVariantPtr) <$> {#get GDNativeMethodInfo->default_arguments#} ptr)
     <*> {#get GDNativeMethodInfo->default_argument_count#} ptr
+  poke _ _ = error "Don't poke GdnativeMethodInfo"
 type GdnativeExtensionClassGetPropertyList = GDExtensionClassInstancePtr -> Ptr (CUInt) -> IO (Ptr (GdnativePropertyInfo))
 foreign import ccall "dynamic" mkGdnativeExtensionClassGetPropertyList
   :: FunPtr GdnativeExtensionClassGetPropertyList
@@ -294,6 +298,7 @@ instance Storable GdnativeExtensionClassCreationInfo where
     <*> (mkGdnativeExtensionClassGetVirtual <$> {#get GDNativeExtensionClassCreationInfo->get_virtual_func#} ptr)
     <*> (mkGdnativeExtensionClassGetRid <$> {#get GDNativeExtensionClassCreationInfo->get_rid_func#} ptr)
     <*> {#get GDNativeExtensionClassCreationInfo->class_userdata#} ptr
+  poke _ _ = error "Don't poke GdnativeExtensionClassCreationInfo"
 {#pointer GDNativeExtensionClassLibraryPtr as GdnativeExtensionClassLibraryPtr newtype #}
 deriving newtype instance Show GdnativeExtensionClassLibraryPtr
 {#enum GDNativeExtensionClassMethodFlags as GdnativeExtensionClassMethodFlags {underscoreToCase}
@@ -359,6 +364,7 @@ instance Storable GdnativeExtensionClassMethodInfo where
     <*> (mkGdnativeExtensionClassMethodGetArgumentMetadata <$> {#get GDNativeExtensionClassMethodInfo->get_argument_metadata_func#} ptr)
     <*> {#get GDNativeExtensionClassMethodInfo->default_argument_count#} ptr
     <*> (coerce @_ @(Ptr (GdnativeVariantPtr)) <$> {#get GDNativeExtensionClassMethodInfo->default_arguments#} ptr)
+  poke _ _ = error "Don't poke GdnativeExtensionClassMethodInfo"
 {#pointer GDNativeExtensionScriptInstanceDataPtr as GdnativeExtensionScriptInstanceDataPtr newtype #}
 deriving newtype instance Show GdnativeExtensionScriptInstanceDataPtr
 type GdnativeExtensionScriptInstanceSet = GdnativeExtensionScriptInstanceDataPtr -> GdnativeStringNamePtr -> GdnativeVariantPtr -> IO (GdnativeBool)
@@ -494,6 +500,7 @@ instance Storable GdnativeExtensionScriptInstanceInfo where
     <*> (mkGdnativeExtensionScriptInstanceGet <$> {#get GDNativeExtensionScriptInstanceInfo->get_fallback_func#} ptr)
     <*> (mkGdnativeExtensionScriptInstanceGetLanguage <$> {#get GDNativeExtensionScriptInstanceInfo->get_language_func#} ptr)
     <*> (mkGdnativeExtensionScriptInstanceFree <$> {#get GDNativeExtensionScriptInstanceInfo->free_func#} ptr)
+  poke _ _ = error "Don't poke GdnativeExtensionScriptInstanceInfo"
 type MemAlloc = CULong -> IO (Ptr (()))
 foreign import ccall "dynamic" mkMemAlloc
   :: FunPtr MemAlloc
@@ -1217,6 +1224,7 @@ instance Storable GdnativeInterface where
     <*> (mkClassdbRegisterExtensionClassSignal <$> {#get GDNativeInterface->classdb_register_extension_class_signal#} ptr)
     <*> (mkClassdbUnregisterExtensionClass <$> {#get GDNativeInterface->classdb_unregister_extension_class#} ptr)
     <*> (mkGetLibraryPath <$> {#get GDNativeInterface->get_library_path#} ptr)
+  poke _ _ = error "Don't poke GdnativeInterface"
 memAlloc =
   unsafePerformIO
     (readIORef interface <&> (.memAlloc))
@@ -1718,6 +1726,7 @@ instance Storable GdnativeInitialization where
     <*> {#get GDNativeInitialization->userdata#} ptr
     <*> (mkInitialize <$> {#get GDNativeInitialization->initialize#} ptr)
     <*> (mkDeinitialize <$> {#get GDNativeInitialization->deinitialize#} ptr)
+  poke _ _ = error "Don't poke GdnativeInitialization"
 type GdnativeInitializationFunction = Ptr (GdnativeInterface) -> GdnativeExtensionClassLibraryPtr -> Ptr (GdnativeInitialization) -> IO (GdnativeBool)
 foreign import ccall "dynamic" mkGdnativeInitializationFunction
   :: FunPtr GdnativeInitializationFunction

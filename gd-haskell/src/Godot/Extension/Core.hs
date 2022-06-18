@@ -4,6 +4,7 @@
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -25,6 +26,8 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Lens hiding (from)
 import qualified Data.Vector as V
 import Foreign.C (withCString)
+import Godot.Extension.Generate.Utils (withUtf8)
+-- import Godot.Extension.Extension (mkGdnativePtrSetter,variantGetPtrSetter)
 
 interface :: IORef E.GdnativeInterface
 interface = unsafePerformIO $ newIORef $ error "Attempted to access E.GdnativeInterface!"
@@ -87,8 +90,10 @@ instance MonadIO m => Construct (Double -> Double -> m Vector2)
 
 -- newtype GdVariant = MkGdVariant { unGdVariant :: Ptr GdVariant }
 
-withVariantArray :: V.Vector E.GdnativeVariantPtr -> (Ptr E.GdnativeVariantPtr -> IO a) -> IO a
-withVariantArray vs f = allocaArray @() (length vs) \arr -> f (coerce arr)
+-- withVariantArray :: V.Vector E.GdnativeVariantPtr -> (Ptr E.GdnativeVariantPtr -> IO a) -> IO a
+-- withVariantArray vs f = allocaArray @() (length vs) \arr -> f (coerce arr)
+
+
 
 _AXIS_X :: Int
 _AXIS_X = 0
@@ -107,17 +112,38 @@ vector2Eq = undefined
 vector2Neg :: Vector2 -> IO ()
 vector2Neg = undefined
 
-angle :: Vector2 -> IO Double
-angle v =
-  withCString "angle" \cstr -> do
-    f <- E.mkGdnativePtrBuiltInMethod <$> E.variantGetPtrBuiltinMethod (from E.GdnativeVariantTypeVector2) cstr 0
-    dPtr <- memAlloc' @CFloat
-    f (coerce v.unVector2) nullPtr (coerce dPtr) 0
-    realToFrac <$> peek dPtr
+instance From CFloat Double where
+  from = undefined
+
+-- angle :: MonadIO m => Vector2 -> m Double
+-- angle v = liftIO $
+--   withUtf8 "angle" \cstr -> do
+--     r <- memAlloc' @CFloat
+--     angleBind (coerce v.unVector2) nullPtr (coerce r) 0
+--     from <$> peek r
+--  where
+--   angleBind = unsafePerformIO $
+--     withCString "angle" \cstr -> do
+--       E.mkGdnativePtrBuiltInMethod <$> E.variantGetPtrBuiltinMethod (from E.GdnativeVariantTypeVector2) cstr 0
+
+-- angleTo :: MonadIO m => Vector2 -> Vector2 -> m Double angleTo v1 v = liftIO do
+--   allocaBytes 8 \ptr -> do
+--     E.objectMethodBindCall
+--     undefined
+--   -- v1Ptr <- coerce @_ @(Ptr E.GdnativeVariantPtr) <$> malloc @(Ptr ())
+--   undefined
+--  where
+--   angleToBind = unsafePerformIO $
+--     withUtf8 "Vector2" \clsStr ->
+--       withUtf8 "angle_to" \mtdStr ->
+--         E.classdbGetMethodBind clsStr mtdStr 0
+
+setNormal :: MonadIO m => Vector2 -> Vector2 -> m ()
+setNormal a v = liftIO $ _setNormalBind (coerce $ unVector2 v) (coerce $ unVector2 a)
  where
-  angleBind = unsafePerformIO do
-    withCString "angle" \cstr -> do
-      E.mkGdnativePtrBuiltInMethod <$> E.variantGetPtrBuiltinMethod (from E.GdnativeVariantTypeVector2) cstr 0
+  _setNormalBind = unsafePerformIO $
+    withUtf8 "normal" \str ->
+      E.mkGdnativePtrSetter <$> E.variantGetPtrSetter (from E.GdnativeVariantTypeVector2) str
 
 -- playerProcess :: Float -> Godot Player ()
 -- playerProcess delta = do
