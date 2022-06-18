@@ -1,27 +1,48 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Godot.Extension.Generate.Api where
 
-import Control.Monad.Reader (MonadReader (ask), Reader)
+import Control.Monad.Reader (MonadReader (ask), Reader, guard)
 import Data.Coerce (coerce)
 import Data.HashMap.Strict qualified as HM
 import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Ratio (denominator, numerator)
 import Data.String (IsString (fromString))
 import Data.Text qualified as T
 import GHC.Hs.Lit (HsLit (HsString))
 import GHC.Records (HasField (getField), getField)
-import GHC.SourceGen hiding (from, string)
+import GHC.SourceGen hiding (from, guard, string)
 import GHC.Types.Name (mkVarOccFS)
 import GHC.Types.SourceText (SourceText (NoSourceText))
 import Godot.Extension.Generate.Schema
 import Godot.Extension.Generate.Utils (capitalizeFirst, foreignCToHs, fsText, toCamelCase, toCapitalCamelCase)
 import Witch hiding (over)
+
+import qualified Text.Megaparsec as P
+import Godot.Parser.Resource (valP, GdValue(..))
+
+instance TryFrom Rational Int where
+  tryFrom r =
+    let n = numerator r
+        d = denominator r
+     in if n `mod` d == 0 && wInBounds n && wInBounds d
+          then Right $ fromIntegral $ n `div` d
+          else Left $ TryFromException r Nothing
+   where
+    wInBounds l =
+      l <= fromIntegral (maxBound @Int)
+        && l >= fromIntegral (minBound @Int)
+
+parseGdValue :: T.Text -> HsExpr'
+parseGdValue inp = undefined
+ where
+
+--------------------------------------------------------------------------------
 
 data NameSpace
   = CName -- C name
@@ -41,6 +62,7 @@ data Capital
   deriving (Show)
 
 newtype Name (n :: NameSpace) (f :: Format) (c :: Capital) = MkName T.Text
+  deriving (Show)
 
 instance From (Name 'HName 'CamelCase c) OccNameStr where
   from = textToOcc . coerce
@@ -62,9 +84,18 @@ instance HasField "toHVal" GVal HVal where
 
 instance HasField "toHType" GType (BuildConfig -> HType) where
   getField (MkName n) b =
-    MkName
-      . fromMaybe (toCapitalCamelCase n)
-      $ HM.lookup n (godotToForeignC b)
+    case enumP of
+      Just e -> MkName e
+      Nothing ->
+        MkName
+          . fromMaybe (toCapitalCamelCase n)
+          $ HM.lookup n (godotToForeignC b)
+   where
+    -- Special case for `enum::` types like 
+    enumP = case T.breakOnEnd "enum::" n of
+      ("enum::", a) -> case T.breakOnEnd "." a of
+        (clsDot, enumTy) -> Just $ toCamelCase $ T.init clsDot <> enumTy
+      _ -> Nothing
 
 capitalize :: Name n f c -> Name n f 'Capitalized
 capitalize (MkName n) = MkName $ capitalizeFirst n
@@ -202,9 +233,9 @@ genBuiltinMemberShims b =
   getOffset bm = do
     cfg <- buildConfigToText <$> bld
     ( \t ->
-        getObject cfg (builtin_class_member_offsets t)
-          >>= getObject b.name
-          >>= getObject bm.name
+        getPaired cfg (builtin_class_member_offsets t)
+          >>= getPaired b.name
+          >>= getPaired bm.name
       )
       <$> api
   genShim f bm = do
@@ -413,21 +444,52 @@ genBuiltinSetterShim instanceTy memberNm memberTy offset = do
  where
   setFuncName = from $ "set" <> memberNm.toHVal.toHType
 
-parseGdConstructor :: T.Text -> HsExpr'
-parseGdConstructor = undefined
+-- -- | Convert a parsed 'GdValue' to an equivalent Haskell expression.
+-- -- If an expression is a 'GdNum' then 'isFloat' determines how it's
+-- -- interpreted.
+-- gdValToExpr :: Bool -> GdValue -> HsExpr'
+-- gdValToExpr isFloat = \case
+--   -- GdInt i -> int $ fromIntegral i
+--   GdBool b -> if b then var "True" else var "False"
+--   -- GdFloat f -> frac $ realToFrac f
+--   GdNum r ->
+--     if isFloat
+--       then frac r
+--       else int (fromRight undefined $ tryFrom r)
+--   GdString s -> string s
+--   GdCstr (nm, args) -> var "construct"
+--   GdArr a -> undefined
+--   GdDict d -> undefined
+--   GdNull -> undefined
+
+-- gdValToExpr :: (Rational -> HsExpr') -> GdValue -> HsExpr'
+-- gdValToExpr numConv = \case
+--   GdBool v -> if v then var "True" else var "False"
+--   GdString v -> string v
+--   GdCstr v -> op (var "unsafePerformIO") "$" (
+--     withUtf8 "Text" (CString -> m a)
+--     )
+--   GdNum v -> numConv v
+--   GdDict _ -> undefined
+--   GdArr _ -> undefined
+--   GdNull -> undefined
 
 genBuiltinConstants :: BuiltinClass -> ApiGen [HsDecl']
 genBuiltinConstants b = do
   cfg <- bld
-
+  
   undefined
  where
-  -- genConstant name ty val =
-  --   [ funBind (from $ "_" <> name) $
-  --       matchGRHSs [] $ rhs
-
-
-  --   ]
+  -- | Convert a constant to an 'HsDecl'.
+  genConstantVal c =
+    case fromJust $ P.parseMaybe valP c.value of
+      GdBool v -> if v then var "True" else var "False"
+      GdNum v -> undefined
+      GdString v -> string v
+      GdCstr v -> undefined
+      GdArr _ -> undefined
+      GdDict _ -> undefined
+      GdNull -> undefined
 
 -- | Generate methods.
 genBuiltinMethods :: BuiltinClass -> ApiGen [HsDecl']

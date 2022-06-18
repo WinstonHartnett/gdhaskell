@@ -11,20 +11,66 @@
 
 module Godot.Extension.Generate.Schema where
 
-import qualified Data.Aeson as A
-import qualified Data.Text as T
-import qualified Data.Vector as V
-import GHC.Generics (Generic)
-
--- import NeatInterpolation (trimming)
--- import Data.String.Interpolate
-import qualified Data.HashMap.Strict as HM
+import Data.Aeson (FromJSON (parseJSON))
+import Data.Aeson qualified as A
+import Data.HashMap.Strict qualified as HM
+import Data.Hashable (Hashable)
 import Data.Proxy (Proxy (..))
-import GHC.Records (HasField (getField))
+import Data.Text qualified as T
+import Data.Vector qualified as V
+import Debug.Trace (trace)
+import GHC.Generics (Generic)
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
 
---------------------------------------------------------------------------------
+{- |
+Corresponds to a list of Objects with two JSON keys that are interpreted
+as HashMap keys and values, respectively.
+-}
+newtype Paired (k :: Symbol) (v :: Symbol) a = MkObjectMap {unObjectMap :: HM.HashMap T.Text a}
+  deriving (Show, Functor, Foldable, Traversable)
 
+instance (KnownSymbol k, KnownSymbol v, A.FromJSON a) => A.FromJSON (Paired k v a) where
+  parseJSON (A.Array a) =
+    MkObjectMap
+      . HM.fromList
+      <$> mapM
+        ( \case
+            A.Object c -> do
+              (key :: T.Text) <- c A..: read (show $ symbolVal $ Proxy @k)
+              (value' :: a) <- c A..: read (show $ symbolVal $ Proxy @v)
+              pure (key, value')
+            _ -> mempty
+        )
+        (V.toList a)
+  parseJSON _ = mempty
+
+getPaired :: T.Text -> Paired k v a -> Maybe a
+getPaired k o = HM.lookup k o.unObjectMap
+
+{- |
+Corresponds to a list of Objects with a particular JSON field marked as a
+key that points to the Haskell schema of the Object.
+-}
+newtype Keyed (k :: Symbol) t a = MkKeyedMap {unKeyedMap :: HM.HashMap t a}
+  deriving (Show, Functor, Foldable, Traversable)
+
+type Keyed' f = Keyed f T.Text
+
+instance (Hashable t, KnownSymbol k, A.FromJSON t, A.FromJSON a) => A.FromJSON (Keyed k t a) where
+  parseJSON (A.Array a) = do
+    MkKeyedMap . HM.fromList <$> mapM getKeyAndRest (V.toList a)
+   where
+    getKeyAndRest v@(A.Object c) = do
+      key <- trace (show c) $ c A..: read (show $ symbolVal $ Proxy @k)
+      val <- parseJSON v
+      pure (key, val)
+    getKeyAndRest _ = mempty
+  parseJSON _ = mempty
+
+getKeyed :: Hashable t => t -> Keyed k t a -> Maybe a
+getKeyed k o = HM.lookup k o.unKeyedMap
+
+--------------------------------------------------------------------------------
 data Header = MkHeader
   { version_major :: Int
   , version_minor :: Int
@@ -68,14 +114,6 @@ data ClassOffset = MkClassOffset
   deriving (Generic, Show)
 
 instance A.FromJSON ClassOffset
-
--- data BuiltinClassMemberOffsets = MkBuiltinClassMemberOffsets
---   { build_configuration :: T.Text
---   , classes :: V.Vector ClassOffset
---   }
---   deriving (Generic, Show)
-
--- instance A.FromJSON BuiltinClassMemberOffsets
 
 data EnumValue = MkEnumValue
   { name :: T.Text
@@ -144,7 +182,7 @@ data Method = MkMethod
   , is_const :: Bool
   , is_static :: Maybe Bool
   , hash :: Maybe Int
-  , arguments :: Maybe (V.Vector Argument)
+  , arguments :: Maybe (Keyed' "name" Argument)
   }
   deriving (Generic, Show)
 
@@ -181,12 +219,12 @@ instance A.FromJSON Constant where
 data BuiltinClass = MkBuiltinClass
   { name :: T.Text
   , is_keyed :: Maybe Bool
-  , operators :: V.Vector Operator
+  , operators :: Keyed' "name" Operator
   , indexing_return_type :: Maybe T.Text
-  , constructors :: V.Vector Constructor
-  , methods :: Maybe (V.Vector Method)
-  , constants :: Maybe (V.Vector Constant)
-  , members :: Maybe (V.Vector BuiltinClassMember)
+  , constructors :: Maybe (Keyed "index" Int Constructor)
+  , methods :: Maybe (Keyed' "name" Method)
+  , constants :: Maybe (Keyed' "name" Constant)
+  , members :: Maybe (Keyed' "name" BuiltinClassMember)
   , has_destructor :: Bool
   }
   deriving (Generic, Show)
@@ -226,10 +264,10 @@ data Class = MkClass
   , is_instantiable :: Bool
   , inherits :: Maybe T.Text
   , api_type :: T.Text
-  , enums :: Maybe (V.Vector EnumEntry)
-  , methods :: Maybe (V.Vector Method)
-  , signals :: Maybe (V.Vector Signal)
-  , properties :: Maybe (V.Vector Property)
+  , enums :: Maybe (Paired "name" "values" (Paired "name" "value" Int))
+  , methods :: Maybe (Keyed' "name" Method)
+  , signals :: Maybe (Keyed' "name" Signal)
+  , properties :: Maybe (Keyed' "name" Property)
   }
   deriving (Generic, Show)
 
@@ -256,55 +294,24 @@ data NativeStructureEntry = MkNativeStructureEntry
 
 instance A.FromJSON NativeStructureEntry
 
-{- | Corresponds to a list of Objects with two JSON keys that are interpreted
-     as HashMap keys and values, respectively.
--}
-newtype ObjectMap (k :: Symbol) (v :: Symbol) a = MkObjectMap {unObjectMap :: HM.HashMap T.Text a}
-  deriving (Show)
-
-getObject :: T.Text -> ObjectMap k v a -> Maybe a
-getObject k o = HM.lookup k o.unObjectMap
-
--- -- | Convenience wrapper around HashMap access.
--- instance KnownSymbol k => HasField "lookup" (ObjectMap k v a) (T.Text -> Maybe a) where
---   getField o = \k -> HM.lookup k o.unObjectMap
-
-instance
-  (KnownSymbol k, KnownSymbol v, A.FromJSON a) =>
-  A.FromJSON (ObjectMap k v a)
-  where
-  parseJSON (A.Array a) =
-    MkObjectMap
-      . HM.fromList
-      <$> mapM
-        ( \case
-            A.Object c -> do
-              (key :: T.Text) <- c A..: read (show $ symbolVal $ Proxy @k)
-              (value' :: a) <- c A..: read (show $ symbolVal $ Proxy @v)
-              pure (key, value')
-            _ -> mempty
-        )
-        (V.toList a)
-  parseJSON _ = mempty
-
 data ExtensionApi = MkExtensionApi
   { header :: Header
   , builtin_class_sizes ::
-    ObjectMap
+    Paired
       "build_configuration"
       "sizes"
-      (ObjectMap "name" "size" Int)
+      (Paired "name" "size" Int)
   , builtin_class_member_offsets ::
-    ObjectMap
+    Paired
       "build_configuration"
       "classes"
-      (ObjectMap "name" "members" (ObjectMap "member" "offset" Int))
+      (Paired "name" "members" (Paired "member" "offset" Int))
   , global_constants :: V.Vector ()
   , global_enums ::
-    ObjectMap
+    Paired
       "name"
       "values"
-      (V.Vector EnumValue)
+      (Paired "name" "value" Int)
   , utility_functions :: V.Vector UtilityFunction
   , builtin_classes :: V.Vector BuiltinClass
   , classes :: V.Vector Class

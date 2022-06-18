@@ -30,14 +30,15 @@ main = do
   case A.eitherDecode @ExtensionApi f of
     Left e -> error $ show e
     Right res -> do
-      let a = res.builtin_classes
-      -- let (Just a) = V.find (\(b :: BuiltinClass) -> b.name == ("Vector2" :: T.Text)) res.builtin_classes
-      -- let m = V.last $ fromJust $ a.members
-      print libdir
-      let mod = module' (Just "Test") (Nothing) [] (runReader (msum <$> V.mapM genBuiltinMemberShims a) (MkApi res Float64))
-      runGhc (Just libdir) do
-        df <- getDynFlags
-        putPpr mod
+      print res
+      -- let a = res.builtin_classes
+      -- -- let (Just a) = V.find (\(b :: BuiltinClass) -> b.name == ("Vector2" :: T.Text)) res.builtin_classes
+      -- -- let m = V.last $ fromJust $ a.members
+      -- print libdir
+      -- let mod = module' (Just "Test") (Nothing) [] (runReader (msum <$> V.mapM genBuiltinMemberShims a) (MkApi res Float64))
+      -- runGhc (Just libdir) do
+      --   df <- getDynFlags
+      --   putPpr mod
 
 -- putPpr (inlinable' "hello_there")
 -- let t = showPpr df mod

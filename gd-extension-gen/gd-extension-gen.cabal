@@ -47,10 +47,18 @@ library
     , primitive
     , witch
     , megaparsec
+    , godot-megaparsec
 
-  hs-source-dirs:   src
-  ghc-options:      -Wall
-  default-language: GHC2021
+  hs-source-dirs:     src
+  ghc-options:        -Wall
+  default-language:   GHC2021
+  default-extensions:
+    DataKinds
+    LambdaCase
+    OverloadedStrings
+    OverloadedLists
+    TypeApplications
+    TypeFamilies
 
 executable gd-extension-gen
   main-is:          Main.hs
