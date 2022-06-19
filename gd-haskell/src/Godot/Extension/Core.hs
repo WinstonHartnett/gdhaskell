@@ -5,29 +5,29 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Godot.Extension.Core where
 
+import Control.Lens hiding (from)
 import Control.Monad
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Coerce
 import Data.IORef (IORef, newIORef, readIORef)
+import Data.Vector qualified as V
 import Foreign hiding (void)
+import Foreign.C (withCString)
 import Foreign.C.Types
--- import GHC.Base
-import GHC.IO (unsafePerformIO, bracket)
+import GHC.ForeignPtr (unsafeWithForeignPtr)
+import GHC.IO (bracket, unsafePerformIO)
 import GHC.OverloadedLabels
 import GHC.Records
 import GHC.TypeLits
 import Godot.Extension.Extension qualified as E
-import Witch
-import Data.Coerce
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Lens hiding (from)
-import qualified Data.Vector as V
-import Foreign.C (withCString)
 import Godot.Extension.Generate.Utils (withUtf8)
--- import Godot.Extension.Extension (mkGdnativePtrSetter,variantGetPtrSetter)
+import Witch
 
 interface :: IORef E.GdnativeInterface
 interface = unsafePerformIO $ newIORef $ error "Attempted to access E.GdnativeInterface!"
@@ -38,49 +38,53 @@ class a <: b where
 instance {-# OVERLAPPABLE #-} x <: x where
   upcast = id
 
-memAlloc' :: forall a. Storable a => IO (Ptr a)
-memAlloc' =
-  coerce @(Ptr ()) @(Ptr a)
-    <$> E.memAlloc (fromIntegral $ sizeOf (undefined :: a))
+-- memAlloc' :: forall a. Storable a => IO (Ptr a)
+-- memAlloc' =
+--   coerce @(Ptr ()) @(Ptr a)
+--     <$> E.memAlloc (fromIntegral $ sizeOf (undefined :: a))
 
-memFree' :: forall a. Ptr a -> IO ()
-memFree' ptr = E.memFree $ coerce @_ @(Ptr ()) ptr
+-- memFree' :: forall a. Ptr a -> IO ()
+-- memFree' ptr = E.memFree $ coerce @_ @(Ptr ()) ptr
 
-withGdnativeCallError :: (E.GdnativeCallErrorPtr -> IO a) -> IO (Either E.GdnativeCallError a)
-withGdnativeCallError f =
-  bracket
-    (memAlloc' @E.GdnativeCallError)
-    memFree'
-    \err -> do
-      ret <- f err
-      err' <- peek err
-      case err'.error' of
-        E.GdnativeCallOk -> pure $ Right ret
-        e -> pure $ Left err'
+-- withGdnativeCallError :: (E.GdnativeCallErrorPtr -> IO a) -> IO (Either E.GdnativeCallError a)
+-- withGdnativeCallError f =
+--   bracket
+--     (memAlloc' @E.GdnativeCallError)
+--     memFree'
+--     \err -> do
+--       ret <- f err
+--       err' <- peek err
+--       case err'.error' of
+--         E.GdnativeCallOk -> pure $ Right ret
+--         e -> pure $ Left err'
 
-withGdnativeCallError' :: (E.GdnativeCallErrorPtr -> IO a) -> IO a
-withGdnativeCallError' f = do
-  res <- withGdnativeCallError f
-  case res of
-    Left e -> error $ show e.error'
-    Right r -> pure r
+-- withGdnativeCallError' :: (E.GdnativeCallErrorPtr -> IO a) -> IO a
+-- withGdnativeCallError' f = do
+--   res <- withGdnativeCallError f
+--   case res of
+--     Left e -> error $ show e.error'
+--     Right r -> pure r
 
 class Construct f where
-  construct :: f
+  constructNoFinal :: f
 
 -- Vector2 is a builtin, so it'll be a pointered item.
-newtype Vector2 = MkVector2 {unVector2 :: Ptr Vector2}
+newtype Vector2 = MkVector2 {unVector2 :: ForeignPtr ()}
 
-instance Storable Vector2 where
-  sizeOf _ = 16 -- from builtin sizes defines
-  alignment _ = 16 -- also from builtin
-  peek = pure . MkVector2
-  poke _ _ = error "Don't poke Vector2"
+-- instance Storable Vector2 where
+--   sizeOf _ = 16 -- from builtin sizes defines
+--   alignment _ = 16 -- also from builtin
+--   peek = pure . MkVector2
+--   poke _ _ = error "Don't poke Vector2"
 
 -- instance HasField "x" Vector2 (IO Double) where
 getX v = realToFrac @CDouble @Double <$> peekByteOff v.unVector2 0
 
 getY v = realToFrac @CDouble @Double <$> peekByteOff v.unVector2 8
+
+construct :: m Vector2
+construct = do
+  undefined
 
 instance MonadIO m => Construct (m Vector2)
 
@@ -93,17 +97,52 @@ instance MonadIO m => Construct (Double -> Double -> m Vector2)
 -- withVariantArray :: V.Vector E.GdnativeVariantPtr -> (Ptr E.GdnativeVariantPtr -> IO a) -> IO a
 -- withVariantArray vs f = allocaArray @() (length vs) \arr -> f (coerce arr)
 
+{- |
+Class that overloads getting Godot constants.
 
+Sometimes you want to return a Haskell-native type, rather than a Godot type,
+for convenience. Otherwise,
+if you care about performance, you can simply perform your operations on the
+Godot-native types and pass them to Godot functions freely.
+-}
+class Constant x s f where
+  constant :: f
 
-_AXIS_X :: Int
-_AXIS_X = 0
+-- instance MonadIO m => Constant Vector2 "AXIS_X" (m Vector2) where
+--   constant = undefined
+
+instance Applicative m => From t (m t) where
+  from = pure
+
+instance MonadIO m => From Vector2 (m (Double, Double)) where
+  from = undefined
+
+instance (MonadIO m, From Vector2 (m t)) => Constant Vector2 "_AXIS_X" (m t) where
+  {-# INLINE constant #-}
+  constant = from @Vector2 undefined
+
+instance Constant Vector2 "_AXIS_X" Int where
+  {-# INLINE constant #-}
+  constant = 0
+
+{-# INLINE _AXIS_X #-}
+_AXIS_X :: forall f. Constant Vector2 "_AXIS_X" f => f
+_AXIS_X = constant @Vector2 @"_AXIS_X"
+
+test :: IO Int
+test = do
+  (v :: Vector2) <- _AXIS_X
+  undefined
+
+-- let a = _AXIS_X
+--  in a + 1
 
 _ZERO :: Vector2
-_ZERO = unsafePerformIO $ construct
+_ZERO = unsafePerformIO $ constructNoFinal
 {-# NOINLINE _ZERO #-}
 
 _ONE :: Vector2
-_ONE = unsafePerformIO $ construct (0.0 :: Double) (0.0 :: Double)
+_ONE = unsafePerformIO $ constructNoFinal (0.0 :: Double) (0.0 :: Double)
 {-# NOINLINE _ONE #-}
 
 vector2Eq :: Vector2 -> Vector2 -> IO Bool
@@ -138,12 +177,48 @@ instance From CFloat Double where
 --       withUtf8 "angle_to" \mtdStr ->
 --         E.classdbGetMethodBind clsStr mtdStr 0
 
-setNormal :: MonadIO m => Vector2 -> Vector2 -> m ()
-setNormal a v = liftIO $ _setNormalBind (coerce $ unVector2 v) (coerce $ unVector2 a)
- where
-  _setNormalBind = unsafePerformIO $
-    withUtf8 "normal" \str ->
-      E.mkGdnativePtrSetter <$> E.variantGetPtrSetter (from E.GdnativeVariantTypeVector2) str
+-- setNormal :: MonadIO m => Vector2 -> Vector2 -> m ()
+-- setNormal a v = liftIO $ unsafeWithForeignPtr (unVector2 v) (\v' -> coerce v' `_setNormalBind` coerce (unVector2 a))
+-- -- setNormal a v = liftIO $ _setNormalBind (coerce $ unVector2 v) (coerce $ unVector2 a)
+--  where
+--   _setNormalBind = unsafePerformIO $
+--     withUtf8 "normal" \str ->
+--       E.mkGdnativePtrSetter <$> E.variantGetPtrSetter (from E.GdnativeVariantTypeVector2) str
+
+-- When allocated for end-user use
+--
+-- r <- memAlloc 16
+-- vecConstructor r nullPtr
+-- MkVector2 <$> newForeignPtr memFree r
+--
+-- When used in a scoped loop
+--
+-- r <- mallocPlainForeignPtrBytes @() 16
+-- unsafeWithForeignPtr r \r' -> vecConstructor r' nullPtr
+-- pure $ MkVector2 r
+
+-- FromInternal
+--   returns unmanaged void pointer to thing
+
+-- {-# INLINABLE _set #-}
+-- _set :: (MonadIO m, Object :< a1, FromInternal a2 GdString) => a1 -> a2 -> Variant -> m Bool
+-- _set a1 a2 a3 = liftIO $ do
+--   let b1 = upcast a1
+--   ba <- newPinnedByteArray 17
+--   b3 <- fromInternal @_ @GdString a2
+--   unsafeWithForeignPtr (unVariant a3) \b4 ->
+--     writeByteArray ba 0 (unGdString b3)
+--     writeByteArray b3 8 b4
+--   objectMethodBindPtrcall _setBind (unObject b1) (coerce $ mutableByteArrayContents ba) (coerce $ mutableByteArrayContents b2 `plusPtr` 16)
+--   from @CBool <$> peek (coerce $ mutableByteArrayContents ba `plusPtr` 16)
+--  where
+--   {-# NOINLINE _setBind -#}
+--   _setBind = unsafePerformIO $
+--     withUtf8 "Object" \str1 ->
+--       withUtf8 "_set" \str2 ->
+--         mkGdnativeMethodBindPtr <$> classDbGetMethodBind str1 str2 00000
+
+newtype Object = MkObject {unObject :: ForeignPtr ()}
 
 -- playerProcess :: Float -> Godot Player ()
 -- playerProcess delta = do

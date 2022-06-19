@@ -1,145 +1,42 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Godot.Extension.Generate.Api where
 
-import Control.Monad.Reader (MonadReader (ask), Reader, guard)
-import Data.Coerce (coerce)
+import Control.Applicative (asum)
+import Control.Monad (guard)
+import Control.Monad.Reader (MonadReader (ask), Reader)
+import Data.Either (fromRight)
 import Data.HashMap.Strict qualified as HM
-import Data.Maybe (fromJust, fromMaybe, isJust)
-import Data.Ratio (denominator, numerator)
-import Data.String (IsString (fromString))
+import Data.Maybe (fromJust)
 import Data.Text qualified as T
-import GHC.Hs.Lit (HsLit (HsString))
-import GHC.Records (HasField (getField), getField)
-import GHC.SourceGen hiding (from, guard, string)
-import GHC.Types.Name (mkVarOccFS)
-import GHC.Types.SourceText (SourceText (NoSourceText))
+import Data.Text.Read qualified as T
+import Data.Vector qualified as V
+import GHC.SourceGen hiding (from, guard, string, stringTy)
 import Godot.Extension.Generate.Schema
-import Godot.Extension.Generate.Utils (capitalizeFirst, foreignCToHs, fsText, toCamelCase, toCapitalCamelCase)
+import Godot.Extension.Generate.Utils (
+  BuildConfig,
+  GType,
+  GVal,
+  HType,
+  HVal,
+  buildConfigToText,
+  capitalizeFirst,
+  fromEither,
+  mkGType,
+  mkGVal,
+  string,
+  stringTy,
+  toNativeForeignC,
+  toText,
+ )
+import Godot.Parser.Resource (GdValue (..), valP)
+import Text.Megaparsec qualified as P
 import Witch hiding (over)
-
-import qualified Text.Megaparsec as P
-import Godot.Parser.Resource (valP, GdValue(..))
-
-instance TryFrom Rational Int where
-  tryFrom r =
-    let n = numerator r
-        d = denominator r
-     in if n `mod` d == 0 && wInBounds n && wInBounds d
-          then Right $ fromIntegral $ n `div` d
-          else Left $ TryFromException r Nothing
-   where
-    wInBounds l =
-      l <= fromIntegral (maxBound @Int)
-        && l >= fromIntegral (minBound @Int)
-
-parseGdValue :: T.Text -> HsExpr'
-parseGdValue inp = undefined
- where
-
---------------------------------------------------------------------------------
-
-data NameSpace
-  = CName -- C name
-  | HName -- Haskell name
-  | GName -- GDExtension name
-  deriving (Show)
-
-data Format
-  = SnakeCase
-  | CamelCase
-  deriving (Show)
-
-data Capital
-  = Capitalized
-  | Uncapitalized
-  | Unknown
-  deriving (Show)
-
-newtype Name (n :: NameSpace) (f :: Format) (c :: Capital) = MkName T.Text
-  deriving (Show)
-
-instance From (Name 'HName 'CamelCase c) OccNameStr where
-  from = textToOcc . coerce
-
-instance From (Name 'HName f c) RdrNameStr where
-  from = unqual . textToOcc . coerce
-
-instance IsString (Name n f c) where
-  fromString = MkName . T.pack
-
-instance HasField "toHVal" HType HVal where
-  getField = coerce
-
-instance HasField "toHType" HVal HType where
-  getField = coerce . capitalizeFirst . coerce
-
-instance HasField "toHVal" GVal HVal where
-  getField (MkName n) = MkName $ toCamelCase n
-
-instance HasField "toHType" GType (BuildConfig -> HType) where
-  getField (MkName n) b =
-    case enumP of
-      Just e -> MkName e
-      Nothing ->
-        MkName
-          . fromMaybe (toCapitalCamelCase n)
-          $ HM.lookup n (godotToForeignC b)
-   where
-    -- Special case for `enum::` types like 
-    enumP = case T.breakOnEnd "enum::" n of
-      ("enum::", a) -> case T.breakOnEnd "." a of
-        (clsDot, enumTy) -> Just $ toCamelCase $ T.init clsDot <> enumTy
-      _ -> Nothing
-
-capitalize :: Name n f c -> Name n f 'Capitalized
-capitalize (MkName n) = MkName $ capitalizeFirst n
-
-toText :: Name n f c -> T.Text
-toText = coerce
-
-mkHType :: T.Text -> HType
-mkHType = coerce
-
-mkHVal :: T.Text -> HVal
-mkHVal = coerce
-
-mkGType :: T.Text -> GType
-mkGType = coerce
-
-mkGVal :: T.Text -> GVal
-mkGVal = coerce
-
-instance Monoid (Name 'HName f c) where
-  mempty = MkName $ mempty
-
-instance Semigroup (Name 'HName f c) where
-  a <> b = MkName $ toText a <> toText b
-
-type HType = Name 'HName 'CamelCase 'Capitalized
-type HVal = Name 'HName 'CamelCase 'Uncapitalized
-type CType = Name 'CName 'CamelCase 'Unknown
-type CVal = Name 'CName 'CamelCase 'Uncapitalized
-type GType = Name 'GName 'CamelCase 'Unknown
-type GVal = Name 'GName 'SnakeCase 'Uncapitalized
-
-{- |
-Precision targets of Godot's internal `real_t`.
-
-_Note:_ 32-bit builds are not supported by GHC.
--}
-data BuildConfig
-  = Float64
-  | Double64
-
-buildConfigToText :: BuildConfig -> T.Text
-buildConfigToText Float64 = "float_64"
-buildConfigToText Double64 = "double_64"
 
 data Api = MkApi
   { extensionApi :: ExtensionApi
@@ -154,69 +51,31 @@ api = (.extensionApi) <$> ask
 bld :: ApiGen BuildConfig
 bld = (.buildConfig) <$> ask
 
--- | Wrapper over ghc-source-gen's 'string' function (which takes a 'String').
-string :: HasLit e => T.Text -> e
-string = lit . HsString NoSourceText . fsText
-{-# INLINE string #-}
-
--- | Make a new 'OccNameStr' from text.
-textToOcc :: T.Text -> OccNameStr
-textToOcc = occNameToStr . mkVarOccFS . fsText
-{-# INLINE textToOcc #-}
-
-instance From T.Text OccNameStr where
-  from = textToOcc
-
-instance From T.Text RdrNameStr where
-  from = unqual . textToOcc
-
-{- | Conversion from Godot's `extension_api.json` types to Foreign.C
-types. Some types (i.e. `float`) depend on the build configuration.
--}
-godotToForeignC :: BuildConfig -> HM.HashMap T.Text T.Text
-godotToForeignC bc =
-  HM.fromList $ case bc of
-    Float64 -> ("float", "CFloat") : nativeTys
-    Double64 -> ("float", "CDouble") : nativeTys
- where
-  nativeTys =
-    [ ("Nil", "()")
-    , ("bool", "CBool")
-    , ("int", "CLong")
-    ]
-
-toNativeForeignC :: BuildConfig -> GType -> Maybe HType
-toNativeForeignC cfg g = do
-  fc <- HM.lookup (toText g) (godotToForeignC cfg)
-  MkName <$> HM.lookup fc foreignCToHs
-
--- | Whether a Godot type is a primitive C type.
-isGodotBaseType :: BuildConfig -> T.Text -> Bool
-isGodotBaseType bc = isJust . (`HM.lookup` godotToForeignC bc)
-
 --------------------------------------------------------------------------------
 
-{- | Generate an opaque 'newtype' shim.
+{- |
+Generate an opaque 'newtype' shim.
 
- @
-   newtype Vector2 = MkVector2 { unVector2 :: Ptr Vector2 }
-     deriving Show
- @
+@
+  newtype Vector2 = MkVector2 { unVector2 :: ForeignPtr Vector2 }
+    deriving Show
+@
 -}
 genNewtype :: BuiltinClass -> ApiGen HsDecl'
 genNewtype = undefined
 
-{- | Generate overloaded constructor instances for builtins.
+{- |
+Generate overloaded constructor instances for builtins.
 
-  @
-    instance MonadIO m => Construct (m Vector2) where
-      construct = liftIO do
-        r <- memAlloc 8
-        ptrCstr <- ptrConstructor (from GdnativeVariantTypeVector2) 0
-        ptrCstr (coerce r) nullPtr
-        pure $ MkVector2 (coerce r)
-     {\-# INLINABLE construct #-\}
-  @
+@
+  instance MonadIO m => Construct (m Vector2) where
+    construct = liftIO do
+      r <- memAlloc 8
+      ptrCstr <- ptrConstructor (from GdnativeVariantTypeVector2) 0
+      ptrCstr (coerce r) nullPtr
+      pure $ MkVector2 (coerce r)
+   {\-# INLINABLE construct #-\}
+@
 -}
 genCstr :: BuiltinClass -> ApiGen HsDecl'
 genCstr cls = undefined
@@ -330,15 +189,15 @@ genBuiltinGetterShim :: HType -> GVal -> GType -> Int -> ApiGen [HsDecl']
 genBuiltinGetterShim instanceTy memberNm memberTy offset = do
   cfg <- bld
   let outTy = case toNativeForeignC cfg memberTy of
-        Just ty -> ty
-        Nothing -> from $ memberTy.toHType cfg
+        Just ty -> Left $ ty
+        Nothing -> Right $ from $ memberTy.toHType cfg
   let getFuncSig =
         typeSig getFuncName $
           [var "MonadIO" @@ var "m"]
             ==> var (from instanceTy)
-            --> var "m" @@ var (from outTy)
-      -- Complex marshalling.
-      getComplex =
+            --> var "m" @@ var (from $ fromEither outTy)
+  -- Complex marshalling.
+  let getComplex =
         funBind getFuncName
           . matchGRHSs [bvar "v"]
           $ rhs
@@ -353,8 +212,8 @@ genBuiltinGetterShim instanceTy memberNm memberTy offset = do
                   ]
             )
             `where'` bindPtr "get" memberNm (gdVariantGetPtr cfg "Getter" memberTy)
-      -- Native C marshalling.
-      getNative =
+  -- Native C marshalling.
+  let getNative =
         funBind getFuncName
           . matchGRHSs [bvar "v"]
           $ rhs
@@ -366,9 +225,7 @@ genBuiltinGetterShim instanceTy memberNm memberTy offset = do
                     @@ int (from offset)
                 )
             )
-  let getBody = case toNativeForeignC cfg memberTy of
-        Just _ -> getNative
-        Nothing -> getComplex
+  let getBody = either (const getNative) (const getComplex) outTy
   pure $ [inlinable getFuncName, getFuncSig, getBody]
  where
   getFuncName = from $ "get" <> memberNm.toHVal.toHType
@@ -382,7 +239,7 @@ There are two cases:
 
     @
     setX :: MonadIO m => Double -> Vector2 -> m ()
-    setX a v = pokeByteOff (unVector2 v) 0 a
+    setX a v = pokeByteOff (unVector2 v) 0 a -- TODO Make this change to from @_ @CDouble a
     {\-# INLINABLE setX \-#}
     @
 
@@ -403,15 +260,15 @@ genBuiltinSetterShim :: HType -> GVal -> GType -> Int -> ApiGen [HsDecl']
 genBuiltinSetterShim instanceTy memberNm memberTy offset = do
   cfg <- bld
   let inTy = case toNativeForeignC cfg memberTy of
-        Just ty -> ty
-        Nothing -> from $ memberTy.toHType cfg
+        Just ty -> Left $ ty
+        Nothing -> Right $ from $ memberTy.toHType cfg
   let setFuncSig =
         typeSig setFuncName $
           [var "MonadIO" @@ var "m"]
-            ==> var (from inTy)
+            ==> var (from $ fromEither inTy)
             --> var (from instanceTy)
             --> var "m" @@ var "()"
-      setComplex =
+  let setComplex =
         funBind setFuncName
           . matchGRHSs [bvar "a", bvar "v"]
           $ rhs
@@ -424,7 +281,7 @@ genBuiltinSetterShim instanceTy memberNm memberTy offset = do
                 )
             )
             `where'` bindPtr "set" memberNm (gdVariantGetPtr cfg "Setter" memberTy)
-      setNative =
+  let setNative =
         funBind setFuncName
           . matchGRHSs [bvar "a", bvar "v"]
           $ rhs
@@ -437,59 +294,151 @@ genBuiltinSetterShim instanceTy memberNm memberTy offset = do
                       `tyApp` var (from $ memberTy.toHType cfg) @@ var "a"
                   )
             )
-  let setBody = case toNativeForeignC cfg memberTy of
-        Just _ -> setNative
-        Nothing -> setComplex
+  let setBody = either (const setNative) (const setComplex) inTy
   pure $ [inlinable setFuncName, setFuncSig, setBody]
  where
   setFuncName = from $ "set" <> memberNm.toHVal.toHType
 
--- -- | Convert a parsed 'GdValue' to an equivalent Haskell expression.
--- -- If an expression is a 'GdNum' then 'isFloat' determines how it's
--- -- interpreted.
--- gdValToExpr :: Bool -> GdValue -> HsExpr'
--- gdValToExpr isFloat = \case
---   -- GdInt i -> int $ fromIntegral i
---   GdBool b -> if b then var "True" else var "False"
---   -- GdFloat f -> frac $ realToFrac f
---   GdNum r ->
---     if isFloat
---       then frac r
---       else int (fromRight undefined $ tryFrom r)
---   GdString s -> string s
---   GdCstr (nm, args) -> var "construct"
---   GdArr a -> undefined
---   GdDict d -> undefined
---   GdNull -> undefined
+{- |
+Generate an overloaded builtin constant.
 
--- gdValToExpr :: (Rational -> HsExpr') -> GdValue -> HsExpr'
--- gdValToExpr numConv = \case
---   GdBool v -> if v then var "True" else var "False"
---   GdString v -> string v
---   GdCstr v -> op (var "unsafePerformIO") "$" (
---     withUtf8 "Text" (CString -> m a)
---     )
---   GdNum v -> numConv v
---   GdDict _ -> undefined
---   GdArr _ -> undefined
---   GdNull -> undefined
+@
+-- INLINE _AXIS_X
+_AXIS_X :: Constant Vector2 "_AXIS_X" f => f
+_AXIS_X = constant @Vector2 @"_AXIS_X"
+@
+
+There are two cases:
+
+  1. If the constant type is a C marshallable:
+
+    @
+    instance Constant Vector2 "_AXIS_X" Int where
+      -- INLINE constant
+      constant = from @CInt 0
+    @
+
+  2. Or if the constant type is a complex Godot type:
+
+    @
+    instance (MonadIO m, From Vector2 (m t)) => Constant Vector2 "_ZERO" (m t) where
+      -- INLINE constant
+      constant = from @Vector2 =<< construct 0.0 0.0
+    @
+-}
+genBuiltinConstant :: BuiltinClass -> Constant -> ApiGen [HsDecl']
+genBuiltinConstant b c = do
+  cfg <- bld
+  let outTy = case toNativeForeignC cfg constTy of
+        Just ty -> Left $ ty
+        Nothing -> Right $ constTy.toHType cfg
+      builtinTy = mkGType b.name
+      builtinHTy = builtinTy.toHType cfg
+      instSig = case outTy of
+        Left t ->
+          var "Constant"
+            @@ var (from builtinHTy)
+            @@ stringTy ("_" <> c.name)
+            @@ var (from t.fromForeignC)
+        Right _ ->
+          [ var "MonadIO"
+              @@ var "m"
+          , var "From" @@ var "Vector2" @@ par (var "m" @@ var "t")
+          ]
+            ==> var "Constant"
+            @@ var (from builtinHTy)
+            @@ stringTy ("_" <> c.name)
+            @@ par (var "m" @@ var "t")
+  instBody <- case outTy of
+    Left t -> pure $ bodyPfx $ var "from" `tyApp` var (from t) @@ nativeRet
+    Right t -> do
+      (_, _, args) <-
+        fromJust <$> findConstructor (fromJust $ P.parseMaybe valP c.value)
+      let e = cstrExpr args
+      pure . bodyPfx $ op (var "from" `tyApp` var (from t)) "=<<" e
+  let constDecl =
+        funBind (from $ "_" <> c.name)
+          . matchGRHSs []
+          . rhs
+          $ var "constant"
+            `tyApp` var (from builtinHTy)
+            `tyApp` stringTy ("_" <> c.name)
+  pure [instance' instSig [instBody], constDecl]
+ where
+  constTy = mkGType c.type'
+  bodyPfx = funBind "constant" . matchGRHSs [] . rhs
+  nativeRet = case c.type' of
+    "int" -> int $ fst $ fromRight undefined $ T.decimal c.value
+    "float" -> frac $ realToFrac $ fst $ fromRight undefined $ T.double c.value
+    "bool" -> var $ from $ capitalizeFirst c.value
+    _ -> undefined
+
+{- |
+Convert parsed arguments and constructor argument definitions to an expression.
+
+>>> cstrExpr [(GdNum 0.0, ...), (GdNum 0.0, ...)]
+construct 0.0 0.0
+-}
+cstrExpr :: V.Vector (GdValue, Argument) -> HsExpr'
+cstrExpr args = V.foldl' (\acc t -> acc @@ valConv t) (var "construct") args
+ where
+  valConv (v, a) =
+    case v of
+      GdNum n ->
+        if a.type' == "int"
+          then int $ fromRight undefined $ tryFrom n
+          else frac $ realToFrac n
+      GdBool n -> if n then var "True" else var "False"
+      GdString n -> string n
+      GdArr _ -> undefined
+      GdDict _ -> undefined
+      GdCstr _ -> undefined
+      GdNull -> undefined
+
+{- |
+Given a parsed GDExtension constructor, find the corresponding Constructor
+in the Extension API.
+-}
+findConstructor ::
+  GdValue ->
+  ApiGen (Maybe (BuiltinClass, Constructor, V.Vector (GdValue, Argument)))
+findConstructor (GdCstr (nm, args)) = do
+  api' <- api
+  pure do
+    bTarget <- V.find (\b -> b.name == nm) api'.builtin_classes
+    asum
+      . V.map (\(_, c) -> (bTarget,c,) <$> matchCstr (V.fromList args) c)
+      . V.fromList
+      . HM.toList
+      . unKeyedMap
+      =<< bTarget.constructors
+ where
+  isSameCstr p arg = case p of
+    GdNum _ ->
+      arg.type' == "float"
+        || arg.type' == "int"
+        || "enum::" `T.isPrefixOf` arg.type'
+    GdBool _ -> arg.type' == "bool"
+    GdString _ -> arg.type' == "String"
+    GdArr _ -> arg.type' == "Array"
+    GdDict _ -> arg.type' == "Dictionary"
+    GdCstr _ -> True
+    GdNull -> True
+  matchCstr pVals cstr =
+    if length pVals == length (fromJust cstr.arguments)
+      then
+        traverse
+          (\(p, arg) -> guard (isSameCstr p arg) *> Just (p, arg))
+          $ V.zip pVals (fromJust cstr.arguments)
+      else undefined
+findConstructor _ = pure Nothing
 
 genBuiltinConstants :: BuiltinClass -> ApiGen [HsDecl']
 genBuiltinConstants b = do
   cfg <- bld
-  
+  -- let outTy = case toNativeForeignC cfg GType
   undefined
  where
-  -- | Convert a constant to an 'HsDecl'.
-  genConstantVal c =
-    case fromJust $ P.parseMaybe valP c.value of
-      GdBool v -> if v then var "True" else var "False"
-      GdNum v -> undefined
-      GdString v -> string v
-      GdCstr v -> undefined
-      GdArr _ -> undefined
-      GdDict _ -> undefined
-      GdNull -> undefined
 
 -- | Generate methods.
 genBuiltinMethods :: BuiltinClass -> ApiGen [HsDecl']
