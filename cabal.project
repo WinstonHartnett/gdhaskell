@@ -3,7 +3,7 @@ packages:
   gd-haskell
   gd-haskell-gen
 
-allow-newer: string-interpolate:*
+allow-newer: string-interpolate:*, text-display:text
 
 source-repository-package
   type: git

@@ -308,10 +308,9 @@ data ExtensionApi = MkExtensionApi
       (Paired "name" "members" (Paired "member" "offset" Int))
   , global_constants :: V.Vector ()
   , global_enums ::
-    Paired
+    Keyed'
       "name"
-      "values"
-      (Paired "name" "value" Int)
+      EnumEntry
   , utility_functions :: V.Vector UtilityFunction
   , builtin_classes :: V.Vector BuiltinClass
   , classes :: V.Vector Class

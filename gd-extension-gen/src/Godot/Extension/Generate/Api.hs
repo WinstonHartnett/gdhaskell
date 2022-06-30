@@ -8,12 +8,16 @@
 module Godot.Extension.Generate.Api where
 
 import Control.Applicative (asum)
+import Control.Lens (each, over)
 import Control.Monad (guard)
 import Control.Monad.Reader (MonadReader (ask), Reader)
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.Either (fromRight)
+import Data.Foldable (foldl')
 import Data.HashMap.Strict qualified as HM
 import Data.Maybe (fromJust)
 import Data.Text qualified as T
+import Data.Text.Display
 import Data.Text.Read qualified as T
 import Data.Vector qualified as V
 import GHC.SourceGen hiding (from, guard, string, stringTy)
@@ -27,6 +31,7 @@ import Godot.Extension.Generate.Utils (
   buildConfigToText,
   capitalizeFirst,
   fromEither,
+  mkGEnum,
   mkGType,
   mkGVal,
   string,
@@ -63,22 +68,6 @@ Generate an opaque 'newtype' shim.
 -}
 genNewtype :: BuiltinClass -> ApiGen HsDecl'
 genNewtype = undefined
-
-{- |
-Generate overloaded constructor instances for builtins.
-
-@
-  instance MonadIO m => Construct (m Vector2) where
-    construct = liftIO do
-      r <- memAlloc 8
-      ptrCstr <- ptrConstructor (from GdnativeVariantTypeVector2) 0
-      ptrCstr (coerce r) nullPtr
-      pure $ MkVector2 (coerce r)
-   {\-# INLINABLE construct #-\}
-@
--}
-genCstr :: BuiltinClass -> ApiGen HsDecl'
-genCstr cls = undefined
 
 -- | Generate field getters and setters for a builtin class.
 genBuiltinMemberShims :: BuiltinClass -> ApiGen [HsDecl']
@@ -305,7 +294,7 @@ Generate an overloaded builtin constant.
 @
 -- INLINE _AXIS_X
 _AXIS_X :: Constant Vector2 "_AXIS_X" f => f
-_AXIS_X = constant @Vector2 @"_AXIS_X"
+_AXIS_X = constant \@Vector2 \@"_AXIS_X"
 @
 
 There are two cases:
@@ -315,15 +304,22 @@ There are two cases:
     @
     instance Constant Vector2 "_AXIS_X" Int where
       -- INLINE constant
-      constant = from @CInt 0
+      constant = from \@CInt 0
     @
 
   2. Or if the constant type is a complex Godot type:
 
     @
-    instance (MonadIO m, From Vector2 (m t)) => Constant Vector2 "_ZERO" (m t) where
+    instance MonadIO m => Constant Vector2 "_ZERO" (m Vector2) where
       -- INLINE constant
-      constant = from @Vector2 =<< construct 0.0 0.0
+      constant = construct 0.0 0.0
+
+    instance Constant Vector2 "_ZERO" V2 where
+      -- INLINE constant
+      constant = constant'
+       where
+        -- NOINLINE constantBind
+        constant' = unsafePerformIO $ from \@_ \@(IO V2) =<< construct 0.0 0.0
     @
 -}
 genBuiltinConstant :: BuiltinClass -> Constant -> ApiGen [HsDecl']
@@ -433,16 +429,240 @@ findConstructor (GdCstr (nm, args)) = do
       else undefined
 findConstructor _ = pure Nothing
 
-genBuiltinConstants :: BuiltinClass -> ApiGen [HsDecl']
-genBuiltinConstants b = do
+-- | Generate an enum.
+genEnum :: EnumEntry -> ApiGen [HsDecl']
+genEnum e = do
   cfg <- bld
-  -- let outTy = case toNativeForeignC cfg GType
-  undefined
+  pure
+    [ data'
+        (from $ eName.toHType cfg)
+        []
+        ( map (\v -> prefixCon (from $ (mkGEnum v.name).toHVal) []) $
+            V.toList e.values
+        )
+        [deriving' [var "Show", var "Enum"]]
+    ]
  where
+  eName = mkGType e.name
 
--- | Generate methods.
+{- |
+>>> marshalStub "a1" (MkHType "AesContextMode")  ...
+marshal @_ @AesContextMode \b1 -> ...
+-}
+marshalStub :: T.Text -> HType -> HsExpr' -> HsExpr'
+marshalStub vName targetTy inner =
+  var "marshall" `tyApp` var "_" `tyApp` var (from $ targetTy)
+    @@ lambda [bvar $ from $ T.replace "a" "b" vName] inner
+
+{- |
+Generate builtin methods.
+
+@
+-- In Vector2.hs
+-- INLINE angleTo
+angleTo ::
+  forall a1 a2 m.
+  (  MonadIO m,
+  ,  Marshal a1 Vector2
+  ,  Marshal a2 Vector2 )
+  => a1
+  -> a2
+  -> m Double
+angleTo a1 a2 = callPtrBuiltin @m @a1 @a2 angleToBind a1 a2
+ where
+  -- NOINLINE angleToBind
+  angleToBind = unsafePerformIO $
+    withUtf8 "angle_to" \p1 ->
+      mkGdnativePtrBuiltinMethod
+        <$> variantGetPtrBuiltinMethod (from GdnativeVariantTypeVector2) p1 0000
+@
+-}
 genBuiltinMethods :: BuiltinClass -> ApiGen [HsDecl']
 genBuiltinMethods b =
   case b.constants of
     Just c -> undefined
     Nothing -> pure []
+
+{- |
+Generate object methods.
+
+@
+-- INLINE start
+start ::
+  forall a1 a2 a3 a4 m.
+  (  MonadIO m,
+     Marshal a1 GdnativeObjectPtr,
+     Marshal a2 CInt,
+     Marshal a3 PackedByteArray,
+     Marshal a4 PackedByteArray )
+  => a1
+  -> a2
+  -> a3
+  -> a4
+  -> m Error
+start a1 a2 a3 a4 =
+  callPtr
+    @m @a1 @a2 @CInt
+    @a3 @PackedByteArray
+    @a4 @PackedByteArray
+    @Error @Error
+    startBind a1 a2 a3 a4
+ where
+  -- NOINLINE startBind
+  startBind = unsafePerformIO $
+    withUtf8 "AESContext" \p1 ->
+      withUtf8 "start" \p2 ->
+        mkGdnativeMethodBindPtr <$> classDbGetMethodBind p1 p2 0000
+-- TODO Proper varargs
+@
+-}
+genObjectMethods :: Class -> ApiGen [HsDecl']
+genObjectMethods c = do
+  cfg <- bld
+  undefined
+
+genObjectMethod :: Class -> Method -> ApiGen [HsDecl']
+genObjectMethod c m = do
+  cfg <- bld
+  if m.is_vararg
+    then pure [] -- TODO
+    else do
+      undefined
+ where
+
+{- | Generate marshalling stubs for different numbers of arguments.
+@
+-- In Calls.hs
+-- INLINABLE callPtrBuiltin_1
+callPtrBuiltin_1 ::
+  forall m a1 b1 a2 b2 r s.
+  (  MonadIO m
+  ,  PrimMonad m
+  ,  MarshalTo a1 b1
+  ,  MarshalTo a2 b2
+  ,  MarshalFrom m r s
+  )
+  => GdnativePtrBuiltinMethod
+  -> a1
+  -> a2
+  -> m s
+callPtrBuiltin_1 bPtr a1 a2 =
+  marshal @_ @_ @b1 a1 \b1 ->
+    marshal @_ @_ @b2 a2 \b2 ->
+      ba <- newPinnedByteArray 16
+      writeByteArray ba 0 b1
+      marshalFrom @_ @r @s \p1 ->
+        bPtr
+          (coerce b2)
+          (coerce $ mutableByteArrayContents ba)
+          (coerce p1)
+          1
+
+-- INLINABLE callPtr_3
+callPtr_3 ::
+  forall m a1 a2 b2 a3 b3 a4 b4 r s.
+  (  MonadIO m
+  ,  PrimMonad m
+  ,  MarshalTo m a1 GdnativeObjectPtr
+  ,  MarshalTo m a2 b2
+  ,  MarshalTo m a3 b3
+  ,  MarshalTo m a4 b4
+  ,  MarshalFrom m r s )
+  => GdnativeMethodBindPtr
+  -> a1
+  -> a2
+  -> a3
+  -> m s
+callPtr_3 bPtr a1 a2 a3 =
+  marshal @_ @_ @b1 a1 \b1 ->
+    marshal @_ @_ @b2 a2 \b2 ->
+      marshal @_ @_ @b3 a3 \b3 ->
+        ba <- newPinnedByteArray 16
+        writeByteArray ba 0 b1
+        writeByteArray ba 8 b2
+        marshalFrom @_ @r @s \p1 -> liftIO $
+          objectMethodBindPtrcall
+            (coerce b3)
+            (coerce $ mutableByteArrayContents ba)
+            (coerce p1)
+@
+-}
+genBuiltinPtrcall ::
+  -- | Number of arguments.,
+  Int ->
+  ApiGen [HsDecl']
+genBuiltinPtrcall nArgs = do
+  pure [typeSig']
+ where
+  funName = from $ "callPtrBuiltin_" <> display nArgs
+
+  types =
+    map
+      (\n -> ("a" <> display n, "b" <> display n))
+      [0 :: Int .. nArgs]
+  typeArgs =
+    forall' $
+      [bvar "m"]
+        ++ concatMap (\(a, b) -> [bvar $ from $ a, bvar $ from $ b]) types
+        ++ [bvar "r", bvar "s"]
+  constraints =
+    let mTo (a, b) = var "MarshalTo" @@ bvar (from a) @@ bvar (from b)
+        mFrom = var "MarshalFrom" @@ var "m" @@ var "r" @@ var "s"
+     in [var "MonadIO" @@ var "m", var "PrimMonad" @@ var "m"]
+          ++ map mTo types
+          ++ [mFrom]
+  arrows = (map (bvar . from . fst) types) ++ [var "m" @@ var "s"]
+  typeSig' =
+    typeSig funName
+      . typeArgs
+      $ constraints ==> foldl' (@@) (var "GdnativePtrBuiltinMethod") arrows
+
+  marshalTo (t1, t2) =
+    var "marshalTo"
+      `tyApp` var "_"
+      `tyApp` var "_"
+      `tyApp` var (from t1)
+      `tyApp` var (from t2)
+
+  marshalTos 0 i = i
+  marshalTos n i =
+    marshalTo ("b" <> display n, "a" <> display n)
+      @@ marshalTos (n - 1) i
+
+  marshalFrom t inner =
+    var "marshalFrom"
+      `tyApp` var "_"
+      `tyApp` var "r"
+      `tyApp` var "s"
+      @@ inner
+
+-- funBinds' = funBind funName $ match ([Pat']) HsExpr'
+
+-- typeArgs = forall' $ bvar "m" : (concatMap (\n -> ["a" <> display n, "b" <> display n]) [0..])
+
+{- |
+Generate overloaded constructors for a builtin.
+
+@
+-- NOINLINE constructBind
+constructBind1 = unsafePerformIO $
+  mkGdnativePtrConstructor <$> variantGetPtrConstructor (from GdnativeVariantTypeVector2) 0
+
+instance MonadIO m => Construct (m Vector2) where
+  -- INLINABLE construct
+  construct = liftIO do
+    r <- memAlloc 16
+    constructBind1 r nullPtr
+    pure $ MkVector2 r
+
+instance MonadIO m => Construct (m (InternalAlloc Vector2)) where
+  -- INLINABLE construct
+  construct = liftIO do
+    r <- newPinnedByteArray 16
+    constructBind1 (coerce $ mutableByteArrayContents r) nullPtr
+    pure $ MkInternalAlloc r
+@
+-}
+genBuiltinCstrs :: BuiltinClass -> ApiGen [HsDecl']
+genBuiltinCstrs b = do
+  undefined

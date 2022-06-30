@@ -28,6 +28,8 @@ library
     exposed-modules:
       Godot.MyLib
       Godot.Extension.Extension
+      Godot.Extension.Pool
+      Godot.Extension.Core
 
     include-dirs:
       godot-headers
@@ -44,9 +46,12 @@ library
         base ^>=4.16.1.0
       , witch
       , lens
+      , text
+      , primitive
+      , unliftio
       , template-haskell
       , gd-extension-gen
       , vector
     hs-source-dirs:   src
-    ghc-options: -freverse-errors
+    ghc-options: -freverse-errors -fprint-potential-instances
     default-language: GHC2021

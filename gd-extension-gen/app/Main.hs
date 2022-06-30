@@ -20,7 +20,10 @@ import GHC.Paths (libdir)
 import GHC.SourceGen (module')
 import GHC.SourceGen.Pretty (putPpr)
 import Godot.Extension.Generate.Api
-import Godot.Extension.Generate.Schema (BuiltinClass (..), ExtensionApi (builtin_classes))
+import Godot.Extension.Generate.Schema (BuiltinClass (..), ExtensionApi (builtin_classes), unObjectMap, global_enums, unKeyedMap)
+import Godot.Extension.Generate.Api (genEnum)
+import Godot.Extension.Generate.Utils
+import qualified Data.HashMap.Strict as HM
 
 main :: IO ()
 main = do
@@ -30,14 +33,16 @@ main = do
   case A.eitherDecode @ExtensionApi f of
     Left e -> error $ show e
     Right res -> do
-      print res
+      let es = map snd . HM.toList $ unKeyedMap $ global_enums res
+      -- print res
       -- let a = res.builtin_classes
       -- -- let (Just a) = V.find (\(b :: BuiltinClass) -> b.name == ("Vector2" :: T.Text)) res.builtin_classes
       -- -- let m = V.last $ fromJust $ a.members
       -- print libdir
       -- let mod = module' (Just "Test") (Nothing) [] (runReader (msum <$> V.mapM genBuiltinMemberShims a) (MkApi res Float64))
-      -- runGhc (Just libdir) do
-      --   df <- getDynFlags
+      runGhc (Just libdir) do
+        df <- getDynFlags
+        putPpr $ runReader (mapM genEnum es) (MkApi res Float64)
       --   putPpr mod
 
 -- putPpr (inlinable' "hello_there")

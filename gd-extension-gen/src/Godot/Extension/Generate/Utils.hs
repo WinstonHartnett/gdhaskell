@@ -154,7 +154,7 @@ isGodotBaseType bc = isJust . (`HM.lookup` godotToForeignC bc)
 camelSubstitutions :: V.Vector (T.Text, T.Text)
 camelSubstitutions = customSubstitutions <> casingSubstitutions
  where
-  customSubstitutions = [("String", "GdString")]
+  customSubstitutions = [("String", "GdString"), (".", "")]
   casingSubstitutions =
     V.map
       (\t -> (t, capitalizeFirst $ T.toLower t))
@@ -342,6 +342,9 @@ instance HasField "toHType" GType (BuildConfig -> HType) where
         (clsDot, enumTy) -> Just $ toCamelCase $ T.init clsDot <> enumTy
       _ -> Nothing
 
+instance HasField "toHVal" GEnum HVal where
+  getField (MkName n) = MkName $ toCapitalCamelCase $ T.toLower n
+
 instance HasField "fromForeignC" HType HType where
   getField (MkName n) = MkName $ fromMaybe n $ HM.lookup n foreignCToHs
 
@@ -369,9 +372,13 @@ mkGType = coerce
 mkGVal :: T.Text -> GVal
 mkGVal = coerce
 
+mkGEnum :: T.Text -> GEnum
+mkGEnum = coerce
+
 type HType = Name 'HName 'CamelCase 'Capitalized
 type HVal = Name 'HName 'CamelCase 'Uncapitalized
 type CType = Name 'CName 'CamelCase 'Unknown
 type CVal = Name 'CName 'CamelCase 'Uncapitalized
 type GType = Name 'GName 'CamelCase 'Unknown
 type GVal = Name 'GName 'SnakeCase 'Uncapitalized
+type GEnum = Name 'GName 'CamelCase 'Capitalized
